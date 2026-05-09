@@ -12,12 +12,11 @@ the wire from a probe. The live e2e test in ``tests/e2e/`` does that.
 
 from __future__ import annotations
 
-import pytest
-from agents import RunConfig
-
 import asyncio
 import json
 
+import pytest
+from agents import RunConfig
 from agents.tool_context import ToolContext as SdkToolContext
 
 from engine.agents.agent_execution import AgentExecution
