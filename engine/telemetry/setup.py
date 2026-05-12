@@ -40,9 +40,9 @@ win over the defaults below.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
-import sys
 import uuid
 from collections.abc import Mapping
 from importlib.metadata import PackageNotFoundError, version
@@ -64,6 +64,8 @@ _CATALYST_TRACING_PREFIX = "CATALYST_TRACING_"
 # is rejected and ``resolve_run_id`` falls back to a fresh uuid.
 _SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _MAX_RUN_ID_LEN = 128
+
+_logger = logging.getLogger(__name__)
 
 
 class _Shutdownable(Protocol):
@@ -107,18 +109,18 @@ def resolve_run_id() -> str:
     (``halo-telemetry-{run_id}.jsonl``); without validation, a value
     like ``../../../etc/passwd`` would write outside the working
     directory. Rejected values fall back to a fresh uuid and the
-    rejection is announced on stderr (we don't have a configured
-    logger here).
+    rejection is logged at WARNING.
     """
     raw = os.environ.get("CATALYST_TRACING_RUN_ID", "").strip()
     if not raw:
         return uuid.uuid4().hex
     if len(raw) <= _MAX_RUN_ID_LEN and _SAFE_RUN_ID_RE.match(raw):
         return raw
-    sys.stderr.write(
-        "[halo.telemetry] CATALYST_TRACING_RUN_ID rejected "
-        f"(length<={_MAX_RUN_ID_LEN} and charset {_SAFE_RUN_ID_RE.pattern} "
-        "required); falling back to a generated uuid.\n"
+    _logger.warning(
+        "CATALYST_TRACING_RUN_ID rejected (length<=%d and charset %s required); "
+        "falling back to a generated uuid.",
+        _MAX_RUN_ID_LEN,
+        _SAFE_RUN_ID_RE.pattern,
     )
     return uuid.uuid4().hex
 
