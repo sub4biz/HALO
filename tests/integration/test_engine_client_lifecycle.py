@@ -4,7 +4,6 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-
 from openai import AsyncOpenAI
 
 import engine.agents.agent_context as agent_context_module
