@@ -320,6 +320,23 @@ def test_tree_entry_cap_marker(tmp_path: Path) -> None:
     assert "entry cap of 500 reached" in repo.tree
 
 
+def test_tree_caps_input_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The tree reads at most _TREE_MAX_PATHS (sorted) paths, not the whole repo."""
+    import engine.code.code_repo as code_repo_module
+
+    monkeypatch.setattr(code_repo_module, "_TREE_MAX_PATHS", 2)
+    root = tmp_path / "many"
+    root.mkdir()
+    for name in ("a.py", "b.py", "c.py", "d.py"):
+        (root / name).write_text("x\n")
+    repo = CodeRepo.open(root)
+    tree = repo.tree
+    assert "a.py" in tree
+    assert "b.py" in tree
+    assert "c.py" not in tree
+    assert "d.py" not in tree
+
+
 def test_tree_is_cached(tmp_path: Path) -> None:
     """The tree is rendered lazily on first access and memoized for the run."""
     repo = CodeRepo.open(_build_repo(tmp_path))

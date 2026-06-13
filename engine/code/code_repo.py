@@ -86,6 +86,12 @@ _READ_RESPONSE_CHAR_BUDGET = 150_000
 # Repo-tree overview caps so the map stays bounded on large repos.
 _TREE_MAX_DEPTH = 4
 _TREE_MAX_ENTRIES = 500
+# Hard cap on how many paths the tree reads from ripgrep before building. The
+# render only shows _TREE_MAX_ENTRIES, so reading far more is wasted memory/time
+# on huge repos. Generously above the entry cap: any repo with fewer files is
+# unaffected (reads them all); larger repos get the sorted-first slice, which the
+# entry-cap marker already flags as partial.
+_TREE_MAX_PATHS = 10_000
 
 _RIPGREP_INSTALL_HINT = (
     "ripgrep (rg) is required to analyze a code repository but was not found on PATH. "
@@ -148,10 +154,28 @@ class CodeRepo:
 
     @property
     def tree(self) -> str:
-        """The depth/entry-capped directory overview, rendered once and cached for the run."""
+        """The depth/entry-capped directory overview, rendered once and cached for the run.
+
+        Streams ``rg --files --sort path`` and stops after ``_TREE_MAX_PATHS`` so
+        a huge repo can't materialize an unbounded path list / tree dict — the
+        render only ever shows ``_TREE_MAX_ENTRIES`` anyway. ``--sort path`` keeps
+        the bounded slice deterministic (alphabetically-first); repos under the
+        cap read fully and are unaffected.
+        """
         if self._tree is None:
-            args = self._rg_files_args(glob_pattern=None, sort=False)
-            paths = [line.rstrip("\n") for line in self._rg_line_stream(args) if line.strip()]
+            args = self._rg_files_args(glob_pattern=None, sort=True)
+            paths: list[str] = []
+            stream = self._rg_line_stream(args)
+            try:
+                for line in stream:
+                    path = line.rstrip("\n")
+                    if not path:
+                        continue
+                    paths.append(path)
+                    if len(paths) >= _TREE_MAX_PATHS:
+                        break
+            finally:
+                stream.close()
             self._tree = _build_tree(self._root.name, paths)
         return self._tree
 
