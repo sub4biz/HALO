@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shutil
 from pathlib import Path
 from typing import get_args
 
@@ -14,6 +13,7 @@ from rich.console import Console
 from rich.rule import Rule
 
 from engine.agents.agent_config import AgentConfig
+from engine.code.code_repo import find_ripgrep
 from engine.engine_config import EngineConfig
 from engine.main import stream_engine_async
 from engine.model_config import ModelConfig, ReasoningEffort
@@ -256,7 +256,7 @@ def _run(
             err=True,
         )
         raise typer.Exit(1)
-    if repo_path is not None and shutil.which("rg") is None:
+    if repo_path is not None and find_ripgrep() is None:
         typer.echo(
             "--repo-path requires ripgrep (rg), which was not found on PATH. "
             "Install it (`brew install ripgrep`, `apt-get install ripgrep`, or "

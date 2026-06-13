@@ -198,7 +198,7 @@ def test_cli_repo_path_requires_ripgrep(
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
-    monkeypatch.setattr(cli_main.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(cli_main, "find_ripgrep", lambda: None)
 
     result = CliRunner().invoke(
         cli, [str(trace_path), "--prompt", "hi", "--repo-path", str(repo_dir)]

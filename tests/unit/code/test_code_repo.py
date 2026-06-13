@@ -69,7 +69,7 @@ def test_open_resolves_root(tmp_path: Path) -> None:
 def test_open_raises_without_ripgrep(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import engine.code.code_repo as code_repo_module
 
-    monkeypatch.setattr(code_repo_module.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(code_repo_module, "find_ripgrep", lambda: None)
     with pytest.raises(EngineDependencyError, match="ripgrep"):
         CodeRepo.open(_build_repo(tmp_path))
 

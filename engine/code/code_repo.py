@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import subprocess
+import sysconfig
 from pathlib import Path
 
 from engine.code.models import (
@@ -15,6 +17,25 @@ from engine.code.models import (
 from engine.errors import EngineDependencyError
 
 logger = logging.getLogger(__name__)
+
+
+def find_ripgrep() -> str | None:
+    """Locate the ripgrep binary, or ``None`` if unavailable.
+
+    The pip ``ripgrep`` wheel installs ``rg`` into the interpreter's *scripts*
+    directory (``.venv/bin`` in a venv), which is NOT necessarily on ``PATH`` —
+    e.g. running ``.venv/bin/python`` or the installed ``.venv/bin/halo`` entry
+    point without activating the venv. So check the scripts dir first (finds the
+    pip-installed binary regardless of PATH), then fall back to a system ``rg``.
+    """
+    scripts_dir = sysconfig.get_path("scripts")
+    if scripts_dir:
+        for name in ("rg", "rg.exe"):
+            candidate = Path(scripts_dir) / name
+            if candidate.is_file():
+                return str(candidate)
+    return shutil.which("rg")
+
 
 # Baseline directories to exclude on top of whatever ``.gitignore`` says: VCS
 # metadata, dependency vendoring, build/output trees, and tool caches. Fed to
@@ -108,7 +129,7 @@ class CodeRepo:
         root = Path(repo_path).resolve(strict=True)
         if not root.is_dir():
             raise NotADirectoryError(f"repo_path is not a directory: {root}")
-        rg_executable = shutil.which("rg")
+        rg_executable = find_ripgrep()
         if rg_executable is None:
             raise EngineDependencyError(_RIPGREP_INSTALL_HINT)
         logger.info("code repo opened at %s (ripgrep: %s)", root, rg_executable)
@@ -180,14 +201,10 @@ class CodeRepo:
         than were returned. Ripgrep owns regex validation — a bad pattern raises
         ``ValueError`` carrying rg's message, surfaced to the model.
         """
-        args = [
-            self._rg_executable,
-            "--line-number",
-            "--no-heading",
-            "--color=never",
-            "--hidden",
-            "--no-require-git",
-        ]
+        # ``--json`` gives unambiguous per-match records (path, line number, text
+        # as separate fields), so a repo path containing a ``:`` parses correctly
+        # — unlike the ``path:line:text`` text format.
+        args = [self._rg_executable, "--json", "--hidden", "--no-require-git"]
         if glob_pattern is not None:
             args += ["-g", glob_pattern]
         args += self._exclude_glob_args()
@@ -209,7 +226,7 @@ class CodeRepo:
         try:
             assert proc.stdout is not None
             for line in proc.stdout:
-                parsed = self._parse_ripgrep_line(line)
+                parsed = self._parse_rg_json_match(line)
                 if parsed is None:
                     continue
                 if len(matches) < max_matches:
@@ -241,19 +258,35 @@ class CodeRepo:
             has_more=has_more,
         )
 
-    def _parse_ripgrep_line(self, line: str) -> GrepMatchRecord | None:
-        """Parse one ``path:line:text`` ripgrep output line into a match record (None if malformed)."""
-        path_str, sep1, rest = line.partition(":")
-        if sep1 == "":
+    def _parse_rg_json_match(self, line: str) -> GrepMatchRecord | None:
+        """Parse one ``rg --json`` output line into a match record (None unless it's a ``match`` event).
+
+        ``rg --json`` interleaves ``begin``/``match``/``end``/``summary`` events;
+        only ``match`` carries a hit. Path/line/text are separate fields, so a
+        path containing ``:`` is handled correctly. A non-UTF-8 path or text is
+        reported by rg as a ``bytes`` field (no ``text``); such matches are
+        skipped rather than guessed at.
+        """
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
             return None
-        line_str, sep2, text = rest.partition(":")
-        if sep2 == "" or not line_str.isdigit():
+        if not isinstance(event, dict) or event.get("type") != "match":
             return None
+        data = event.get("data", {})
+        path_text = (data.get("path") or {}).get("text")
+        line_number = data.get("line_number")
+        if path_text is None or not isinstance(line_number, int):
+            return None
+        text = (data.get("lines") or {}).get("text", "") or ""
+        # rg includes the line's trailing newline (and CR on CRLF); drop it.
+        text = text[:-1] if text.endswith("\n") else text
+        if text.endswith("\r"):
+            text = text[:-1]
         # rg prints paths relative to cwd (the repo root); normalise the leading "./".
-        path = Path(path_str).as_posix()
         return GrepMatchRecord(
-            path=path,
-            line_number=int(line_str),
+            path=Path(path_text).as_posix(),
+            line_number=line_number,
             line_text=_truncate_line(text),
         )
 
