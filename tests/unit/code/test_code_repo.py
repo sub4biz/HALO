@@ -152,6 +152,19 @@ def test_glob_honors_gitignore(tmp_path: Path) -> None:
     assert paths == {"keep.py", "src/app.py"}  # ignored_dir/x.py excluded by .gitignore
 
 
+def test_glob_skips_unstattable_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A path rg listed but that vanished before stat (a race) is skipped, not fatal."""
+    repo = CodeRepo.open(_build_repo(tmp_path))
+
+    def _fake_stream(_args: list[str]):
+        yield "engine/config.py\n"
+        yield "engine/ghost.py\n"  # listed by rg, but not on disk at stat time
+
+    monkeypatch.setattr(repo, "_rg_line_stream", _fake_stream)
+    result = repo.glob("**/*.py", 100)
+    assert [f.path for f in result.files] == ["engine/config.py"]
+
+
 # --- grep --------------------------------------------------------------------
 
 

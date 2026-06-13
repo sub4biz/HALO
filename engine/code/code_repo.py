@@ -253,10 +253,15 @@ class CodeRepo:
                 path = line.rstrip("\n")
                 if not path:
                     continue
+                try:
+                    size = (self._root / path).stat().st_size
+                except OSError:
+                    # rg listed it, but it's unstattable now — removed/moved
+                    # between the listing and here (a race), or a dangling link.
+                    # Skip it rather than failing the whole glob.
+                    continue
                 if len(files) < max_results:
-                    files.append(
-                        GlobFileEntry(path=path, size_bytes=(self._root / path).stat().st_size)
-                    )
+                    files.append(GlobFileEntry(path=path, size_bytes=size))
                     continue
                 has_more = True
                 break
