@@ -215,6 +215,29 @@ def test_grep_invalid_regex_raises(tmp_path: Path) -> None:
         repo.grep(r"(\w)\1", None, 50)
 
 
+def _fake_rg(tmp_path: Path, script: str) -> CodeRepo:
+    """A CodeRepo whose 'ripgrep' is a stub shell script, for exit-code edge cases."""
+    fake = tmp_path / "fake-rg"
+    fake.write_text(f"#!/bin/sh\n{script}\n")
+    fake.chmod(0o755)
+    return CodeRepo(root=tmp_path.resolve(), rg_executable=str(fake))
+
+
+def test_rg_stream_keeps_partial_output_on_error(tmp_path: Path) -> None:
+    """rg exiting >=2 *after* emitting output keeps the partial output, not raises."""
+    repo = _fake_rg(tmp_path, "printf 'a/b.py\\n'\nexit 2")
+    assert list(repo._rg_line_stream(repo._rg_files_args(glob_pattern=None, sort=False))) == [
+        "a/b.py\n"
+    ]
+
+
+def test_rg_stream_raises_on_error_without_output(tmp_path: Path) -> None:
+    """rg exiting >=2 with no output (e.g. a bad pattern) raises with its stderr."""
+    repo = _fake_rg(tmp_path, "echo boom 1>&2\nexit 2")
+    with pytest.raises(ValueError, match="ripgrep failed"):
+        list(repo._rg_line_stream(repo._rg_files_args(glob_pattern=None, sort=False)))
+
+
 # --- read --------------------------------------------------------------------
 
 

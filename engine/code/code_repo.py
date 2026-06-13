@@ -212,18 +212,27 @@ class CodeRepo:
         keep) instead of buffering all of rg's output. stderr is drained in a
         thread so a chatty rg (file-open warnings on a large/locked-down repo)
         can't fill its pipe buffer and deadlock against our stdout read; capture
-        is capped, excess drained and discarded. If the stream is consumed to the
-        end and rg exits with an error code (>=2, e.g. a malformed pattern), it
-        raises ``ValueError`` with rg's message (surfaced to the model). If the
-        caller stops early, rg is terminated and no error is raised. This mirrors
-        ripgrep's stdout/stderr handling in other harnesses (e.g. OpenCode).
+        is capped, excess drained and discarded.
+
+        ``encoding="utf-8", errors="replace"`` decodes rg's (UTF-8) output
+        explicitly rather than via the process locale, so a non-UTF-8 locale or a
+        path with odd bytes can't raise ``UnicodeDecodeError``.
+
+        If rg exits with an error code (>=2, e.g. a malformed pattern) and
+        produced *no* output, raises ``ValueError`` with rg's message (surfaced
+        to the model). If it errored only after yielding output, the partial
+        results the caller already built are kept (a warning is logged) rather
+        than discarded. If the caller stops early, rg is terminated, no error.
+        This mirrors ripgrep's stdout/stderr handling in other harnesses (e.g.
+        OpenCode).
         """
         proc = subprocess.Popen(
             args,
             cwd=self._root,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         stderr_capture: list[str] = []
 
@@ -238,15 +247,27 @@ class CodeRepo:
 
         stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
         stderr_thread.start()
+        yielded = False
         try:
             assert proc.stdout is not None
-            yield from proc.stdout
+            for line in proc.stdout:
+                yielded = True
+                yield line
             # Natural end — the caller consumed everything. rg exit codes:
             # 0 = ok, 1 = nothing matched, >=2 = error (e.g. a bad pattern).
             returncode = proc.wait()
             stderr_thread.join()
             if returncode >= 2:
-                raise ValueError(f"ripgrep failed: {''.join(stderr_capture).strip()}")
+                stderr = "".join(stderr_capture).strip()
+                if not yielded:
+                    raise ValueError(f"ripgrep failed: {stderr}")
+                # rg errored only after emitting output (rare): keep the partial
+                # results the caller built rather than failing the whole tool.
+                logger.warning(
+                    "ripgrep exited %d after producing output; returning partial results: %s",
+                    returncode,
+                    stderr,
+                )
         finally:
             # Runs on natural end, error, or GeneratorExit (caller stopped early).
             if proc.poll() is None:
