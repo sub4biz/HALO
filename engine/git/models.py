@@ -14,7 +14,7 @@ class CommitSummary(BaseModel):
     full_sha: str
     short_sha: str
     author: str
-    authored_at: str  # ISO-8601 strict (git %aI)
+    authored_at: str  # canonical ISO-8601 (zero offset always ``+00:00``, never ``Z``)
     subject: str
 
 

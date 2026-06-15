@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Generator
+from datetime import datetime
 from pathlib import Path
 
 from engine.code._limits import RESPONSE_CHAR_BUDGET
@@ -78,6 +79,16 @@ def _truncate(text: str, cap: int) -> str:
     if len(text) <= cap:
         return text
     return f"{text[:cap]}... [HALO truncated: original {len(text)} chars]"
+
+
+def _canonical_iso(value: str) -> str:
+    """Normalize git's ``%aI`` author date to a canonical ISO-8601 string.
+
+    git renders a zero UTC offset as ``Z`` in newer versions and ``+00:00`` in
+    older ones; round-tripping through ``datetime`` pins the field to ``+00:00``
+    regardless of the host's git version (other offsets pass through unchanged).
+    """
+    return datetime.fromisoformat(value).isoformat()
 
 
 def _validated_ref(ref: str) -> str:
@@ -218,7 +229,7 @@ class GitRepo:
             full_sha=full,
             short_sha=full[:_SHORT_SHA_LEN],
             author=author,
-            authored_at=authored_at,
+            authored_at=_canonical_iso(authored_at),
             subject=_truncate(subject, _SUBJECT_CAP_CHARS),
         )
 

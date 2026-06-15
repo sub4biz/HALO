@@ -6,7 +6,7 @@ import pytest
 
 import engine.git.git_repo as git_repo_module
 from engine.code.models import FileContent
-from engine.git.git_repo import GitRepo
+from engine.git.git_repo import GitRepo, _canonical_iso
 from engine.git.models import BlameLine, GitBlame, GitDiff, GitLog, GitShow
 from tests.unit.git.git_fixture import (
     AUTHOR_NAME,
@@ -23,6 +23,14 @@ def _repo(tmp_path: Path) -> GitRepo:
     repo = GitRepo.open(build_git_repo(tmp_path))
     assert repo is not None
     return repo
+
+
+def test_canonical_iso_normalizes_zulu() -> None:
+    # git renders a zero offset as `Z` (newer) or `+00:00` (older); both must
+    # normalize identically so `authored_at` is git-version-independent.
+    assert _canonical_iso("2021-01-01T00:00:00Z") == "2021-01-01T00:00:00+00:00"
+    assert _canonical_iso("2021-01-01T00:00:00+00:00") == "2021-01-01T00:00:00+00:00"
+    assert _canonical_iso("2021-03-01T12:00:00+05:30") == "2021-03-01T12:00:00+05:30"
 
 
 def _log(repo: GitRepo, **overrides: object) -> GitLog:
