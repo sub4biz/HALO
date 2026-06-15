@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from engine.code._limits import READ_LIMIT_DEFAULT, READ_LIMIT_MAX, READ_OFFSET_DEFAULT
 from engine.code.models import FileContent
 
 
@@ -189,8 +190,8 @@ class GitReadFileArguments(BaseModel):
 
     ref: str
     path: str
-    offset: int = Field(default=1, ge=1)
-    limit: int = Field(default=500, ge=1, le=2000)
+    offset: int = Field(default=READ_OFFSET_DEFAULT, ge=1)
+    limit: int = Field(default=READ_LIMIT_DEFAULT, ge=1, le=READ_LIMIT_MAX)
 
 
 class GitReadFileResult(BaseModel):

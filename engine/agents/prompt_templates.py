@@ -88,7 +88,7 @@ Output rules:
 
 Instructions:
 {system_prompt}
-"""
+{code_repo_section}{git_repo_section}"""
 
 SUBAGENT_SYSTEM_PROMPT_TEMPLATE = """\
 You are a HALO subagent at depth={depth} of maximum_depth={maximum_depth}. You answer a
@@ -103,28 +103,24 @@ sentinel is reserved for the root agent.
 
 Instructions:
 {system_prompt}
-"""
+{code_repo_section}{git_repo_section}"""
 
 CODE_REPO_PROMPT_SECTION_TEMPLATE = """\
 
 Code repository:
 - A read-only checkout of the agent/harness source code that produced these
-  traces is available at {repo_root}. Tools: `view_repo_tree` (a directory
-  overview — call once to orient), `glob_files` (find files by name),
-  `grep_files` (regex-search contents), `read_file` (numbered file contents).
-  Discovery honors .gitignore. Use the code to explain why the agent behaved as
-  the traces show.
+  traces is available at {repo_root}. Use the code tools (discovery honors
+  .gitignore) to explain why the agent behaved as the traces show.
 - Protect your own context. Reading files and scanning matches consumes context
   fast. When you can spawn subagents (depth < maximum_depth), DELEGATE code
   exploration: have a subagent search the repo and report back the relevant
   `path:line` locations plus a short summary, instead of reading files into your
   own context. Spawn separate subagents for independent questions. Reserve
-  direct `read_file`/`grep_files` calls for quick, targeted lookups you need
-  inline.
+  direct reads for quick, targeted lookups you need inline.
 - Reporting:
-  - Cite every code-level claim as `path:line` (1-based, exactly as shown by
-    `read_file`/`grep_files`). Never invent code, paths, or line numbers — if
-    something is not in the repository, say so.
+  - Cite every code-level claim as `path:line` (1-based, exactly as shown by the
+    read/grep tools). Never invent code, paths, or line numbers — if something is
+    not in the repository, say so.
   - Propose fixes as prose plus fenced code blocks. You have read-only access —
     never claim to have changed any file.
 """
@@ -132,23 +128,20 @@ Code repository:
 GIT_REPO_PROMPT_SECTION_TEMPLATE = """\
 
 Git history:
-- The repository at {repo_root} is a git checkout. Read-only git tools:
-  `git_log` (commits; supports `since`/`until` time-windowing and pickaxe
-  `-S`/`-G` string/regex search), `git_show` (one commit's stat or capped patch),
-  `git_diff` (two refs), `git_blame` (who last changed a line range),
-  `git_read_file` (a file's contents as of a commit). All are strictly read-only
-  — never claim to have committed, checked out, or changed anything.
+- The repository at {repo_root} is a git checkout, so the read-only git tools
+  are available. They are strictly read-only — never claim to have committed,
+  checked out, or changed anything.
 - Regression workflow:
   - Window by trace time: pass a trace's start/end timestamps as `git_log`
     `since`/`until` to see what shipped during the period the traces cover.
-  - Find an origin: use `git_log` `pickaxe_string` (or `pickaxe_regex`) to find
-    the commit that introduced or removed a specific prompt fragment, tool name,
-    or error string seen in the traces.
-  - Localize: take a suspicious `path:line` from `grep_files`/`read_file` and
-    `git_blame` it to the commit that last touched it.
-  - Inspect: `git_show <short_sha>` (or `git_diff <good>..<bad>`) to confirm the
-    change; `git_read_file <ref> <path>` to read the code *as it ran* (the traced
-    commit may differ from the current checkout).
+  - Find an origin: use `git_log` pickaxe (`pickaxe_string`/`pickaxe_regex`) to
+    find the commit that introduced or removed a prompt fragment, tool name, or
+    error string seen in the traces.
+  - Localize: `git_blame` a suspicious `path:line` to the commit that last
+    touched it.
+  - Inspect: `git_show` (or `git_diff` across a good..bad range) to confirm the
+    change; `git_read_file` to read the code *as it ran* (the traced commit may
+    differ from the current checkout).
   - Cite commits by short sha. Delegate git spelunking to subagents
     (depth < maximum_depth) to protect your own context, same as code exploration.
 """
@@ -198,18 +191,16 @@ def render_root_system_prompt(
 ) -> str:
     """Build the root agent's system prompt: depth/parallelism caps + ``<final/>`` contract.
 
-    Appends the code-repository section (tools + guidance, not the tree itself)
-    when ``code_repo`` is set, and the git-history section when ``git_repo`` is
-    set; nothing otherwise.
+    Includes the code-repository section (guidance, not the tree itself) when
+    ``code_repo`` is set, and the git-history section when ``git_repo`` is set;
+    each renders empty otherwise.
     """
-    return (
-        ROOT_SYSTEM_PROMPT_TEMPLATE.format(
-            system_prompt=SYSTEM_PROMPT,
-            maximum_depth=maximum_depth,
-            maximum_parallel_subagents=maximum_parallel_subagents,
-        )
-        + _render_code_repo_section(code_repo)
-        + _render_git_repo_section(git_repo)
+    return ROOT_SYSTEM_PROMPT_TEMPLATE.format(
+        system_prompt=SYSTEM_PROMPT,
+        maximum_depth=maximum_depth,
+        maximum_parallel_subagents=maximum_parallel_subagents,
+        code_repo_section=_render_code_repo_section(code_repo),
+        git_repo_section=_render_git_repo_section(git_repo),
     )
 
 
@@ -223,17 +214,15 @@ def render_subagent_system_prompt(
 ) -> str:
     """Build a subagent's system prompt at a specific depth; ``<final/>`` is reserved for root.
 
-    Appends the code-repository section (tools + guidance, not the tree itself)
-    when ``code_repo`` is set, and the git-history section when ``git_repo`` is
-    set; nothing otherwise.
+    Includes the code-repository section (guidance, not the tree itself) when
+    ``code_repo`` is set, and the git-history section when ``git_repo`` is set;
+    each renders empty otherwise.
     """
-    return (
-        SUBAGENT_SYSTEM_PROMPT_TEMPLATE.format(
-            system_prompt=SYSTEM_PROMPT,
-            depth=depth,
-            maximum_depth=maximum_depth,
-            maximum_parallel_subagents=maximum_parallel_subagents,
-        )
-        + _render_code_repo_section(code_repo)
-        + _render_git_repo_section(git_repo)
+    return SUBAGENT_SYSTEM_PROMPT_TEMPLATE.format(
+        system_prompt=SYSTEM_PROMPT,
+        depth=depth,
+        maximum_depth=maximum_depth,
+        maximum_parallel_subagents=maximum_parallel_subagents,
+        code_repo_section=_render_code_repo_section(code_repo),
+        git_repo_section=_render_git_repo_section(git_repo),
     )

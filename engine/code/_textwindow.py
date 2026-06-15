@@ -2,13 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from engine.code._limits import LINE_CHAR_CAP, RESPONSE_CHAR_BUDGET
 from engine.code.models import FileContent
-
-# Per-line and per-call caps for rendered file windows. The response budget
-# mirrors ``_VIEW_TRACE_RESPONSE_BYTES_BUDGET`` in trace_store.py — a comfortable
-# fraction of even a modest context window.
-_READ_LINE_CAP_CHARS = 2000
-_READ_RESPONSE_CHAR_BUDGET = 150_000
 
 
 def render_numbered_window(
@@ -24,8 +19,8 @@ def render_numbered_window(
     file handle (``read_file``) or a subprocess's stdout (``git_read_file``); it is
     consumed once, so memory stays bounded to the window. Line numbering is
     ``\\n``-based, matching ripgrep, so file reads and ``grep_files`` agree on line
-    numbers. Each line is capped at ``_READ_LINE_CAP_CHARS`` and total output at
-    ``_READ_RESPONSE_CHAR_BUDGET``; ``truncated`` flags either clip. ``truncated``
+    numbers. Each line is capped at ``LINE_CHAR_CAP`` and total output at
+    ``RESPONSE_CHAR_BUDGET``; ``truncated`` flags either clip. ``truncated``
     means output was clipped *within* the requested window — it does NOT flag a
     window that simply doesn't span the whole file (the caller sees that from
     ``total_line_count`` vs ``end_line``). ``start_line``/``end_line`` are ``0``
@@ -49,11 +44,11 @@ def render_numbered_window(
         line = raw_line[:-1] if raw_line.endswith("\n") else raw_line
         if line.endswith("\r"):
             line = line[:-1]
-        if len(line) > _READ_LINE_CAP_CHARS:
-            line = f"{line[:_READ_LINE_CAP_CHARS]}... [HALO truncated: original {len(line)} chars]"
+        if len(line) > LINE_CHAR_CAP:
+            line = f"{line[:LINE_CHAR_CAP]}... [HALO truncated: original {len(line)} chars]"
             truncated = True
         entry = f"{line_number:6d}\t{line}"
-        if used_chars + len(entry) > _READ_RESPONSE_CHAR_BUDGET:
+        if used_chars + len(entry) > RESPONSE_CHAR_BUDGET:
             truncated = True
             continue
         rendered.append(entry)

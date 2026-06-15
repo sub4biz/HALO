@@ -7,6 +7,7 @@ import subprocess
 from collections.abc import Generator
 from pathlib import Path
 
+from engine.code._limits import RESPONSE_CHAR_BUDGET
 from engine.code._paths import confine_path
 from engine.code._subprocess import stream_subprocess_lines
 from engine.code._textwindow import render_numbered_window
@@ -37,10 +38,6 @@ _SHORT_SHA_LEN = 12
 _SUBJECT_CAP_CHARS = 500
 _BLAME_LINE_CAP_CHARS = 500
 _BLAME_MAX_LINES = 2000
-# Char budgets for diff/patch bodies, mirroring read_file's response budget.
-_DIFF_CHAR_BUDGET = 150_000
-_SHOW_PATCH_CHAR_BUDGET = 150_000
-_GIT_STDERR_CAP_CHARS = 64 * 1024
 
 # Read-only subcommands only. Asserted in ``_git_stream`` so a future edit can't
 # smuggle a mutating subcommand through the shared runner.
@@ -162,7 +159,6 @@ class GitRepo:
             argv,
             cwd=self._root,
             error_label="git",
-            stderr_cap=_GIT_STDERR_CAP_CHARS,
             error_returncode_floor=1,
             env=_clean_git_env(),
         )
@@ -278,7 +274,7 @@ class GitRepo:
         if commit is None:
             stream.close()
             raise ValueError(f"git failed: could not parse commit for ref {ref!r}")
-        body, truncated = self._collect_capped(stream, _SHOW_PATCH_CHAR_BUDGET)
+        body, truncated = self._collect_capped(stream, RESPONSE_CHAR_BUDGET)
         return GitShow(commit=commit, body=body.lstrip("\n"), truncated=truncated)
 
     def diff(self, *, from_ref: str, to_ref: str, path: str | None, stat_only: bool) -> GitDiff:
@@ -289,7 +285,7 @@ class GitRepo:
         tail += ["--end-of-options", f"{_validated_ref(from_ref)}..{_validated_ref(to_ref)}"]
         if path is not None:
             tail += ["--", self._confined_rel(path)]
-        diff_text, truncated = self._collect_capped(self._git_stream(tail), _DIFF_CHAR_BUDGET)
+        diff_text, truncated = self._collect_capped(self._git_stream(tail), RESPONSE_CHAR_BUDGET)
         return GitDiff(diff=diff_text, stat_only=stat_only, truncated=truncated)
 
     def blame(self, *, path: str, start_line: int, end_line: int, ref: str | None) -> GitBlame:

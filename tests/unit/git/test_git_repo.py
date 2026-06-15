@@ -214,7 +214,7 @@ def test_show_patch_body(tmp_path: Path) -> None:
 
 
 def test_show_patch_truncates_on_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(git_repo_module, "_SHOW_PATCH_CHAR_BUDGET", 20)
+    monkeypatch.setattr(git_repo_module, "RESPONSE_CHAR_BUDGET", 20)
     repo = _repo(tmp_path)
     sha = _short_sha(repo, COMMIT_2_SUBJECT)
     result = repo.show(ref=sha, path=None, include_patch=True)

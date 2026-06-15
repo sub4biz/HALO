@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from engine.code._limits import READ_LIMIT_DEFAULT, READ_LIMIT_MAX, READ_OFFSET_DEFAULT
+
 
 class GlobFilesArguments(BaseModel):
     """Tool arguments for ``glob_files``: a glob pattern relative to the repo root plus a result cap."""
@@ -108,8 +110,8 @@ class ReadFileArguments(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     path: str
-    offset: int = Field(default=1, ge=1)
-    limit: int = Field(default=500, ge=1, le=2000)
+    offset: int = Field(default=READ_OFFSET_DEFAULT, ge=1)
+    limit: int = Field(default=READ_LIMIT_DEFAULT, ge=1, le=READ_LIMIT_MAX)
 
 
 class FileContent(BaseModel):

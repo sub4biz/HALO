@@ -71,10 +71,6 @@ _BINARY_SNIFF_BYTES = 8192
 # model's context with a single result.
 _GREP_LINE_TEXT_CAP_CHARS = 500
 
-# Cap on how much of ripgrep's stderr we retain (for the error message); excess
-# is still drained so the process never blocks, just not kept.
-_GREP_STDERR_CAP_CHARS = 64 * 1024
-
 # Repo-tree overview caps so the map stays bounded on large repos.
 _TREE_MAX_DEPTH = 4
 _TREE_MAX_ENTRIES = 500
@@ -207,7 +203,6 @@ class CodeRepo:
             args,
             cwd=self._root,
             error_label="ripgrep",
-            stderr_cap=_GREP_STDERR_CAP_CHARS,
         )
 
     def glob(self, pattern: str, max_results: int) -> GlobMatches:

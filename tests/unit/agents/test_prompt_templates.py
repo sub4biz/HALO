@@ -65,11 +65,12 @@ def test_root_prompt_includes_code_section_with_repo(tmp_path: Path) -> None:
     )
     assert "Code repository:" in text
     assert str(repo.root) in text
-    assert "view_repo_tree" in text
     assert "`path:line`" in text
     assert "Protect your own context" in text
     assert "subagents" in text
-    # The tree itself is served on demand by view_repo_tree, not embedded here.
+    # The section gives guidance only — no per-tool catalog (tool defs are
+    # already provided to the model) and no embedded tree.
+    assert "view_repo_tree" not in text
     assert "main.py" not in text
 
 
