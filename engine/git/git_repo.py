@@ -5,7 +5,6 @@ import os
 import shutil
 import subprocess
 from collections.abc import Generator
-from datetime import datetime
 from pathlib import Path
 
 from engine.code._limits import RESPONSE_CHAR_BUDGET
@@ -85,10 +84,13 @@ def _canonical_iso(value: str) -> str:
     """Normalize git's ``%aI`` author date to a canonical ISO-8601 string.
 
     git renders a zero UTC offset as ``Z`` in newer versions and ``+00:00`` in
-    older ones; round-tripping through ``datetime`` pins the field to ``+00:00``
-    regardless of the host's git version (other offsets pass through unchanged).
+    older ones; pin it to ``+00:00`` so the field is identical regardless of the
+    host's git version. Pure string work (not ``datetime.fromisoformat``, which
+    only accepts the ``Z`` suffix on Python 3.11+). Non-zero offsets pass through.
     """
-    return datetime.fromisoformat(value).isoformat()
+    if value.endswith("Z"):
+        return f"{value[:-1]}+00:00"
+    return value
 
 
 def _validated_ref(ref: str) -> str:
