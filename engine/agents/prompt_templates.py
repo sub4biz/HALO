@@ -131,6 +131,10 @@ Git history:
 - The repository at {repo_root} is a git checkout, so the read-only git tools
   are available. They are strictly read-only — never claim to have committed,
   checked out, or changed anything.
+- Protect your own context. When you can spawn subagents (depth < maximum_depth),
+  DELEGATE git exploration: have a subagent run the log/blame/diff hunt and report
+  back the relevant short shas plus a short summary, instead of pulling history
+  into your own context. Same as code exploration.
 - Regression workflow:
   - Window by trace time: pass a trace's start/end timestamps as `git_log`
     `since`/`until` to see what shipped during the period the traces cover.
@@ -141,8 +145,7 @@ Git history:
     touched it.
   - Inspect: `git_show` (or `git_diff` across a good..bad range) to confirm the
     change; `git_read_file` to read a suspect file at the traced commit.
-  - Cite commits by short sha. Delegate git spelunking to subagents
-    (depth < maximum_depth) to protect your own context, same as code exploration.
+  - Cite commits by short sha.
 """
 
 COMPACTION_SYSTEM_PROMPT = """\
