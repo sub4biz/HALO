@@ -301,7 +301,7 @@ class GitRepo:
                     continue
                 has_more = True
                 break
-        except ValueError:
+        except ValueError as exc:
             # ``git log`` exits non-zero with no output for an unborn HEAD (a repo
             # with no commits yet) — an empty history, not a failure. Every other
             # such exit IS a real error (bad ``ref_range``, invalid ``pickaxe_regex``,
@@ -309,6 +309,9 @@ class GitRepo:
             # commits.
             if self._has_commits():
                 raise
+            logger.warning(
+                "git log found no commits (unborn HEAD); returning empty history: %s", exc
+            )
             return GitLog(commits=[], returned_count=0, has_more=False)
         finally:
             stream.close()

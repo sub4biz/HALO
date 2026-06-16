@@ -222,10 +222,13 @@ class CodeRepo:
                     continue
                 try:
                     size = (self._root / path).stat().st_size
-                except OSError:
+                except OSError as exc:
                     # rg listed it, but it's unstattable now — removed/moved
                     # between the listing and here (a race), or a dangling link.
                     # Skip it rather than failing the whole glob.
+                    logger.warning(
+                        "skipping %r: listed by ripgrep but not stattable: %s", path, exc
+                    )
                     continue
                 if len(files) < max_results:
                     files.append(GlobFileEntry(path=path, size_bytes=size))
@@ -287,7 +290,8 @@ class CodeRepo:
         """
         try:
             event = json.loads(line)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            logger.warning("skipping malformed ripgrep --json line: %s", exc)
             return None
         if not isinstance(event, dict) or event.get("type") != "match":
             return None
