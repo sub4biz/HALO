@@ -45,12 +45,14 @@ export function TelemetryDetailSheet({
   onOpenChange,
   open,
   sessionId,
+  selectedSpanId,
   traceId,
 }: {
   followLatest?: boolean;
   mode: "trace" | "session";
   onOpenChange: (open: boolean) => void;
   open: boolean;
+  selectedSpanId?: string | null;
   sessionId?: string;
   traceId?: string;
 }) {
@@ -202,10 +204,14 @@ export function TelemetryDetailSheet({
   );
 
   useEffect(() => {
-    setSelectedSpanKey(null);
+    setSelectedSpanKey(
+      mode === "trace" && traceId && selectedSpanId
+        ? `${traceId}:${selectedSpanId}`
+        : null,
+    );
     setRecentSpanIds(new Set());
     expansionInitializedFor.current = null;
-  }, [sessionId, traceId]);
+  }, [mode, selectedSpanId, sessionId, traceId]);
 
   useEffect(() => {
     if (!open) {

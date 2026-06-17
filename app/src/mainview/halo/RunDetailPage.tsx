@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -43,6 +44,7 @@ import { AppHeader } from "~/components/AppHeader";
 import { ProgressBar, StatusBadge } from "~/components/StatusBadge";
 import { formatTimestamp } from "~/lib/format";
 import type { TelemetryFilters } from "../../server/telemetry/types";
+import { TelemetryDetailSheet } from "../tracing/detail/TelemetryDetailSheet";
 import { OpenInToolBar } from "./OpenInToolBar";
 import { RunConfigDialog, type RunConfigInitialValues } from "./RunConfigDialog";
 import { RunConversation } from "./RunConversation";
@@ -64,6 +66,10 @@ export function RunDetailPage({ runId }: { runId: string }) {
     RunConfigInitialValues | undefined
   >(undefined);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [linkedTelemetry, setLinkedTelemetry] = useState<{
+    spanId?: string | null;
+    traceId: string;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollPaneRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
@@ -215,6 +221,14 @@ export function RunDetailPage({ runId }: { runId: string }) {
     continueMutation.mutate({ message: trimmed, runId });
   };
 
+  const openTraceLink = useCallback((traceId: string) => {
+    setLinkedTelemetry({ spanId: null, traceId });
+  }, []);
+
+  const openSpanLink = useCallback((traceId: string, spanId: string) => {
+    setLinkedTelemetry({ spanId, traceId });
+  }, []);
+
   const copyRunLink = async () => {
     await navigator.clipboard.writeText(`#/analysis/${runId}`);
     toast.success({ title: "Run link copied" });
@@ -316,6 +330,8 @@ export function RunDetailPage({ runId }: { runId: string }) {
             ) : (
               <RunConversation
                 events={events}
+                onOpenSpanLink={openSpanLink}
+                onOpenTraceLink={openTraceLink}
                 onRetry={() => retryMutation.mutate({ runId })}
                 run={run}
                 streamText={streamText}
@@ -468,6 +484,16 @@ export function RunDetailPage({ runId }: { runId: string }) {
           void navigate({ params: { runId: started.id }, to: "/analysis/$runId" });
         }}
         open={configOpen}
+      />
+
+      <TelemetryDetailSheet
+        mode="trace"
+        onOpenChange={(open) => {
+          if (!open) setLinkedTelemetry(null);
+        }}
+        open={Boolean(linkedTelemetry)}
+        selectedSpanId={linkedTelemetry?.spanId ?? null}
+        traceId={linkedTelemetry?.traceId}
       />
 
       <Dialog

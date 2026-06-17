@@ -30,11 +30,15 @@ import type { HaloRunView } from "./runShared";
 export function RunConversation({
   events,
   onRetry,
+  onOpenSpanLink,
+  onOpenTraceLink,
   run,
   streamText,
   turns,
 }: {
   events: HaloRunEvent[];
+  onOpenSpanLink?: (traceId: string, spanId: string) => void;
+  onOpenTraceLink?: (traceId: string) => void;
   onRetry: () => void;
   run: HaloRunView;
   streamText: Record<number, string>;
@@ -61,6 +65,8 @@ export function RunConversation({
               (event) => (event.turnIndex ?? 1) === turn.turnIndex,
             )}
             key={turn.id}
+            onOpenSpanLink={onOpenSpanLink}
+            onOpenTraceLink={onOpenTraceLink}
             onRetry={onRetry}
             run={run}
             showToolBar={turn.turnIndex === lastAnsweredTurnIndex}
@@ -91,6 +97,8 @@ function UserTurn({ turn }: { turn: HaloRunTurn }) {
 
 function AssistantTurn({
   events,
+  onOpenSpanLink,
+  onOpenTraceLink,
   onRetry,
   run,
   showToolBar,
@@ -98,6 +106,8 @@ function AssistantTurn({
   turn,
 }: {
   events: HaloRunEvent[];
+  onOpenSpanLink?: (traceId: string, spanId: string) => void;
+  onOpenTraceLink?: (traceId: string) => void;
   onRetry: () => void;
   run: HaloRunView;
   showToolBar: boolean;
@@ -156,7 +166,11 @@ function AssistantTurn({
               inFlight && "stream-block-fade",
             )}
           >
-            <RunReportView markdown={answer} />
+            <RunReportView
+              markdown={answer}
+              onOpenSpanLink={onOpenSpanLink}
+              onOpenTraceLink={onOpenTraceLink}
+            />
           </div>
         ) : inFlight ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">

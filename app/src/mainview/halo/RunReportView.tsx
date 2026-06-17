@@ -9,9 +9,18 @@ import { Badge, cn } from "~/lib/ui";
  * headings. In-flight streamed text stays in the parent's <pre> — this view
  * only mounts once a final answer exists.
  */
-export function RunReportView({ markdown }: { markdown: string }) {
+export function RunReportView({
+  markdown,
+  onOpenSpanLink,
+  onOpenTraceLink,
+}: {
+  markdown: string;
+  onOpenSpanLink?: (traceId: string, spanId: string) => void;
+  onOpenTraceLink?: (traceId: string) => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sections = useMemo(() => extractHeadings(markdown), [markdown]);
+  const linkifiedMarkdown = useMemo(() => linkifyDashboardTags(markdown), [markdown]);
 
   const jumpTo = (slug: string) => {
     containerRef.current
@@ -66,17 +75,87 @@ export function RunReportView({ markdown }: { markdown: string }) {
       >
         <Markdown
           components={{
+            a: ({ href, children, ...props }) => {
+              const dashboardLink = parseDashboardLink(href);
+              if (dashboardLink?.kind === "trace") {
+                return (
+                  <button
+                    className="inline rounded bg-detail-brand/10 px-1 py-0.5 font-mono text-[0.85em] tracking-normal text-link transition hover:bg-detail-brand/15 hover:underline"
+                    onClick={() => onOpenTraceLink?.(dashboardLink.traceId)}
+                    type="button"
+                  >
+                    {children}
+                  </button>
+                );
+              }
+              if (dashboardLink?.kind === "span") {
+                return (
+                  <button
+                    className="inline rounded bg-detail-brand/10 px-1 py-0.5 font-mono text-[0.85em] tracking-normal text-link transition hover:bg-detail-brand/15 hover:underline"
+                    onClick={() =>
+                      onOpenSpanLink?.(dashboardLink.traceId, dashboardLink.spanId)
+                    }
+                    type="button"
+                  >
+                    {children}
+                  </button>
+                );
+              }
+              return (
+                <a href={href} {...props}>
+                  {children}
+                </a>
+              );
+            },
             h1: (props) => <h1 data-heading-slug={slugify(textOf(props.children))} {...props} />,
             h2: (props) => <h2 data-heading-slug={slugify(textOf(props.children))} {...props} />,
             h3: (props) => <h3 data-heading-slug={slugify(textOf(props.children))} {...props} />,
           }}
           remarkPlugins={[remarkGfm]}
         >
-          {markdown}
+          {linkifiedMarkdown}
         </Markdown>
       </div>
     </div>
   );
+}
+
+function linkifyDashboardTags(markdown: string) {
+  let inFence = false;
+  return markdown
+    .split("\n")
+    .map((line) => {
+      if (line.trimStart().startsWith("```")) {
+        inFence = !inFence;
+        return line;
+      }
+      if (inFence) return line;
+      return line
+        .replace(
+          /\[span:([0-9a-f]{32}):([0-9a-f]{16})\]/g,
+          (_match, traceId: string, spanId: string) =>
+            `[span:${traceId}:${spanId}](#halo-span-${traceId}-${spanId})`,
+        )
+        .replace(
+          /\[trace:([0-9a-f]{32})\]/g,
+          (_match, traceId: string) => `[trace:${traceId}](#halo-trace-${traceId})`,
+        );
+    })
+    .join("\n");
+}
+
+function parseDashboardLink(href: string | undefined) {
+  const traceMatch = href?.match(/^#halo-trace-([0-9a-f]{32})$/);
+  if (traceMatch?.[1]) return { kind: "trace" as const, traceId: traceMatch[1] };
+  const spanMatch = href?.match(/^#halo-span-([0-9a-f]{32})-([0-9a-f]{16})$/);
+  if (spanMatch?.[1] && spanMatch[2]) {
+    return {
+      kind: "span" as const,
+      spanId: spanMatch[2],
+      traceId: spanMatch[1],
+    };
+  }
+  return null;
 }
 
 function extractHeadings(markdown: string) {
