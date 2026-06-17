@@ -1,8 +1,15 @@
 import type { ReactNode } from "react";
+import { Fragment, useMemo } from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
 
 import { InferenceIcon } from "~/lib/ui";
 import { isDesktopShell, openExternalUrl } from "~/desktop/desktopBridge";
 import { APP_INFERENCE_LOGO_URL } from "../../desktop/commands";
+
+type HeaderCrumb = {
+  label: string;
+  to?: "/" | "/data" | "/analysis" | "/imports" | "/settings" | "/welcome";
+};
 
 /**
  * The single fixed window header used by every page.
@@ -26,6 +33,12 @@ export function AppHeader({
   status?: ReactNode;
   title: string;
 }) {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const breadcrumbs = useMemo(
+    () => buildHeaderBreadcrumbs(pathname, title),
+    [pathname, title],
+  );
+
   return (
     <div className="electrobun-webkit-app-region-drag fixed inset-x-0 top-0 z-40 grid h-14 select-none grid-cols-[14rem_minmax(0,1fr)]">
       {isDesktopShell() ? (
@@ -49,10 +62,7 @@ export function AppHeader({
               {icon}
             </div>
           ) : null}
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">HALO</p>
-            <p className="truncate text-sm font-semibold">{title}</p>
-          </div>
+          <HeaderBreadcrumbs breadcrumbs={breadcrumbs} />
           {description ? (
             <span className="hidden truncate text-xs text-muted-foreground md:block">
               {description}
@@ -67,4 +77,81 @@ export function AppHeader({
       </div>
     </div>
   );
+}
+
+function HeaderBreadcrumbs({ breadcrumbs }: { breadcrumbs: HeaderCrumb[] }) {
+  return (
+    <nav
+      aria-label="Breadcrumb"
+      className="flex min-w-0 shrink items-center overflow-hidden"
+    >
+      {breadcrumbs.map((crumb, index) => {
+        const current = index === breadcrumbs.length - 1;
+        return (
+          <Fragment key={`${crumb.label}-${index}`}>
+            {index > 0 ? (
+              <span className="mx-3 select-none text-sm text-muted-foreground/40">
+                /
+              </span>
+            ) : null}
+            {crumb.to && !current ? (
+              <Link
+                className="shrink-0 whitespace-nowrap text-sm text-muted-foreground transition-colors hover:text-foreground"
+                search={{} as never}
+                to={crumb.to}
+              >
+                {crumb.label}
+              </Link>
+            ) : (
+              <span
+                className={
+                  current
+                    ? "truncate whitespace-nowrap text-sm text-foreground"
+                    : "shrink-0 whitespace-nowrap text-sm text-muted-foreground"
+                }
+              >
+                {crumb.label}
+              </span>
+            )}
+          </Fragment>
+        );
+      })}
+    </nav>
+  );
+}
+
+function buildHeaderBreadcrumbs(pathname: string, title: string): HeaderCrumb[] {
+  const normalized = pathname.replace(/\/$/, "") || "/";
+  const crumbs: HeaderCrumb[] = [{ label: "HALO", to: "/data" }];
+
+  if (normalized === "/" || normalized === "/data" || normalized === "/traces") {
+    return [...crumbs, { label: "Data" }];
+  }
+  if (normalized === "/analysis") {
+    return [...crumbs, { label: "Analysis" }];
+  }
+  if (normalized.startsWith("/analysis/")) {
+    return [
+      ...crumbs,
+      { label: "Analysis", to: "/analysis" },
+      { label: title || "Run" },
+    ];
+  }
+  if (normalized === "/imports") {
+    return [...crumbs, { label: "Imports" }];
+  }
+  if (normalized === "/import-data") {
+    return [
+      ...crumbs,
+      { label: "Imports", to: "/imports" },
+      { label: "Import Data" },
+    ];
+  }
+  if (normalized === "/settings") {
+    return [...crumbs, { label: "Settings" }];
+  }
+  if (normalized === "/welcome") {
+    return [...crumbs, { label: "Setup" }];
+  }
+  return [...crumbs, { label: title }];
 }

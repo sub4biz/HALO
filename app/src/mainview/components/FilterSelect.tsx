@@ -26,6 +26,7 @@ export function FilterSelect({
   className,
   icon,
   label,
+  labelClassName,
   onChange,
   options,
   placeholder,
@@ -36,6 +37,7 @@ export function FilterSelect({
   className?: string;
   icon?: ReactNode;
   label?: string;
+  labelClassName?: string;
   onChange: (value: string) => void;
   options: FilterSelectOption[];
   placeholder?: string;
@@ -45,7 +47,12 @@ export function FilterSelect({
   return (
     <label className={cn("block", label && "space-y-2", className)}>
       {label ? (
-        <span className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground">
+        <span
+          className={cn(
+            "flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground",
+            labelClassName,
+          )}
+        >
           {icon}
           {label}
         </span>

@@ -20,19 +20,19 @@ import {
   APP_INFERENCE_LOGO_URL,
 } from "../../desktop/commands";
 
-export type WorkspaceSection = "traces" | "analysis" | "imports" | "settings";
+export type WorkspaceSection = "data" | "analysis" | "imports" | "settings";
 
 const navItems: Array<{
   id: WorkspaceSection;
   icon: ReactNode;
   label: string;
-  to: "/traces" | "/analysis" | "/imports" | "/settings";
+  to: "/data" | "/analysis" | "/imports" | "/settings";
 }> = [
   {
-    id: "traces",
+    id: "data",
     icon: <Activity className="h-4 w-4" strokeWidth={1.5} />,
-    label: "Traces",
-    to: "/traces",
+    label: "Data",
+    to: "/data",
   },
   {
     id: "analysis",
@@ -196,7 +196,7 @@ function WorkspaceNavLink({
   active: boolean;
   icon: ReactNode;
   label: string;
-  to: "/traces" | "/analysis" | "/imports" | "/settings";
+  to: "/data" | "/analysis" | "/imports" | "/settings";
 }) {
   return (
     <li className="px-3 py-px">

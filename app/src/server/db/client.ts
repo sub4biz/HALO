@@ -299,7 +299,6 @@ export function ensureSchema(sqlite: Database) {
       provider_type TEXT NOT NULL,
       base_url TEXT NOT NULL,
       api_key TEXT NOT NULL,
-      model TEXT NOT NULL,
       headers_json TEXT NOT NULL DEFAULT '{}',
       last_status TEXT NOT NULL DEFAULT 'unknown',
       last_error TEXT,
@@ -402,6 +401,7 @@ export function ensureSchema(sqlite: Database) {
   );
   ensureColumn(sqlite, "trace_summaries", "input_preview", "TEXT");
   ensureColumn(sqlite, "trace_summaries", "output_preview", "TEXT");
+  normalizeHaloModelProvidersSchema(sqlite);
 
   const indexes = [
     "CREATE UNIQUE INDEX IF NOT EXISTS spans_project_trace_span_uidx ON spans(project_id, trace_id, span_id)",
@@ -465,6 +465,44 @@ function ensureColumn(
     .all();
   if (columns.some((column) => column.name === columnName)) return;
   sqlite.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}
+
+function normalizeHaloModelProvidersSchema(sqlite: Database) {
+  const columns = sqlite
+    .query<{ name: string }, []>("PRAGMA table_info(halo_model_providers)")
+    .all();
+  if (!columns.some((column) => column.name === "model")) return;
+
+  sqlite.transaction(() => {
+    sqlite.run("DROP TABLE IF EXISTS halo_model_providers_next;");
+    sqlite.run(`
+      CREATE TABLE halo_model_providers_next (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        provider_type TEXT NOT NULL,
+        base_url TEXT NOT NULL,
+        api_key TEXT NOT NULL,
+        headers_json TEXT NOT NULL DEFAULT '{}',
+        last_status TEXT NOT NULL DEFAULT 'unknown',
+        last_error TEXT,
+        last_tested_at INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    sqlite.run(`
+      INSERT INTO halo_model_providers_next (
+        id, name, provider_type, base_url, api_key, headers_json,
+        last_status, last_error, last_tested_at, created_at, updated_at
+      )
+      SELECT
+        id, name, provider_type, base_url, api_key, headers_json,
+        last_status, last_error, last_tested_at, created_at, updated_at
+      FROM halo_model_providers;
+    `);
+    sqlite.run("DROP TABLE halo_model_providers;");
+    sqlite.run("ALTER TABLE halo_model_providers_next RENAME TO halo_model_providers;");
+  })();
 }
 
 function reconcileTraceSummarySources(sqlite: Database) {

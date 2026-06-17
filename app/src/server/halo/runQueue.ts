@@ -51,6 +51,15 @@ const HALO_ROUTE = "halo.run";
 // 10-minute extension on a 20s cadence while a turn runs.
 const HALO_LOCK_EXTENSION_MS = 10 * 60 * 1000;
 const HALO_LOCK_RENEW_INTERVAL_MS = 20_000;
+const DASHBOARD_RENDERING_INSTRUCTION = `Dashboard rendering instruction:
+When referencing dashboard identifiers in your answer, use these exact tag formats so the UI can link them:
+
+- Trace: [trace:<lowercase hex trace id>]
+- Span: [span:<lowercase hex trace id>:<lowercase hex span id>]
+
+Only use these tags for identifiers that exist in the provided trace dataset. Do not use them for unrelated IDs. Do not include both a span link and its root trace link, only one is needed.`;
+
+type RunnerMessage = { content: string; role: "assistant" | "user" };
 
 export function createHaloRunService(options: {
   database: DatabaseHandle;
@@ -226,7 +235,7 @@ export function createHaloRunService(options: {
       if (!provider) throw new Error("HALO model provider not found.");
       const run = createHaloRun(database.sqlite, {
         ...input,
-        model: input.model?.trim() || provider.model,
+        model: input.model.trim(),
         providerName: provider.name,
         title:
           input.title?.trim() ||
@@ -408,7 +417,9 @@ async function processHaloRunLocked(input: {
   const turnSuffix = turnIndex > 1 ? `-turn-${turnIndex}` : "";
   const configPath = join(outputDir, `runner-config${turnSuffix}.json`);
   const resultPath = join(outputDir, `result${turnSuffix}.json`);
-  const messages = buildRunnerMessages(database.sqlite, run, turnIndex);
+  const messages = withDashboardRenderingInstruction(
+    buildRunnerMessages(database.sqlite, run, turnIndex),
+  );
   writeFileSync(
     configPath,
     JSON.stringify(
@@ -418,7 +429,7 @@ async function processHaloRunLocked(input: {
         maxParallel: run.maxParallel,
         maxTurns: run.maxTurns,
         messages,
-        model: run.model || provider.model,
+        model: run.model,
         prompt: run.prompt,
         provider: {
           apiKey: provider.apiKey,
@@ -461,6 +472,20 @@ async function processHaloRunLocked(input: {
     return { cancelled: true, runId };
   }
   return { runId };
+}
+
+export function withDashboardRenderingInstruction(
+  messages: RunnerMessage[],
+): RunnerMessage[] {
+  let wrappedFirstUser = false;
+  return messages.map((message) => {
+    if (wrappedFirstUser || message.role !== "user") return message;
+    wrappedFirstUser = true;
+    return {
+      ...message,
+      content: `${DASHBOARD_RENDERING_INSTRUCTION}\n\n${message.content}`,
+    };
+  });
 }
 
 async function runPythonBridge(input: {

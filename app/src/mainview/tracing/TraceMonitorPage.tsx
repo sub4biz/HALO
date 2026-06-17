@@ -7,9 +7,10 @@ import {
   useState,
 } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   DownloadCloud,
+  Play,
 } from "lucide-react";
 
 import {
@@ -38,6 +39,7 @@ import {
   traceIdsForLiveEvent,
 } from "./followLatest";
 import { FilterSidebar } from "./FilterSidebar";
+import { RunConfigDialog, type RunConfigInitialValues } from "~/halo/RunConfigDialog";
 import type { LogSortOrder } from "./logTable";
 import { SessionList } from "./SessionList";
 import { TelemetryStatStrip } from "./TelemetryStatStrip";
@@ -78,6 +80,7 @@ export function TraceMonitorPage({
   selectedTraceId?: string;
   viewMode: TraceMonitorViewMode;
 }) {
+  const navigate = useNavigate();
   const isTracesMode = viewMode === "traces";
   const [searchText, setSearchText] = useState("");
   const [dateRange, setDateRange] = useState<DateRange>("all");
@@ -98,6 +101,10 @@ export function TraceMonitorPage({
   const [phoenixDialogOpen, setPhoenixDialogOpen] = useState(false);
   const [fileDialogOpen, setFileDialogOpen] = useState(false);
   const [localAgentSetupOpen, setLocalAgentSetupOpen] = useState(false);
+  const [runConfigOpen, setRunConfigOpen] = useState(false);
+  const [runConfigInitialValues, setRunConfigInitialValues] = useState<
+    RunConfigInitialValues | undefined
+  >(undefined);
   const [recentTraceIds, setRecentTraceIds] = useState<Set<string>>(() => new Set());
   const [recentSessionIds, setRecentSessionIds] = useState<Set<string>>(
     () => new Set(),
@@ -462,6 +469,18 @@ export function TraceMonitorPage({
     [],
   );
 
+  const openRunAnalysis = useCallback(() => {
+    setRunConfigInitialValues({
+      dateRange,
+      filters: {
+        ...filters,
+        freeText: activeSearch || undefined,
+      },
+      targetType: isTracesMode ? "trace_group" : "session_group",
+    });
+    setRunConfigOpen(true);
+  }, [activeSearch, dateRange, filters, isTracesMode]);
+
   useEffect(() => {
     const onPageCommand = (
       event: WindowEventMap[typeof TRACE_PAGE_COMMAND_EVENT],
@@ -492,12 +511,23 @@ export function TraceMonitorPage({
       <AppHeader
         title="Trace Monitor"
         actions={
-          <Button aria-label="Open import data" asChild size="sm" variant="default">
-            <Link onClick={onOpenImportData} to="/import-data">
-              <DownloadCloud className="mr-2 h-4 w-4" />
-              Import Data
-            </Link>
-          </Button>
+          <>
+            <Button aria-label="Open import data" asChild size="sm" variant="secondary">
+              <Link onClick={onOpenImportData} to="/import-data">
+                <DownloadCloud className="mr-2 h-4 w-4" />
+                Import Data
+              </Link>
+            </Button>
+            <Button
+              aria-label="Run analysis on current filters"
+              onClick={openRunAnalysis}
+              size="sm"
+              variant="default"
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Run Analysis
+            </Button>
+          </>
         }
       />
 
@@ -509,7 +539,7 @@ export function TraceMonitorPage({
             : "grid-cols-[14rem_300px_minmax(0,1fr)]",
         )}
       >
-        <WorkspaceNav active="traces" />
+        <WorkspaceNav active="data" />
         {isTelemetryEmpty ? null : (
           <FilterSidebar
             agentName={agentName}
@@ -656,6 +686,14 @@ export function TraceMonitorPage({
         ingestUrl={ingestUrl}
         onOpenChange={setLocalAgentSetupOpen}
         open={localAgentSetupOpen}
+      />
+      <RunConfigDialog
+        initialValues={runConfigInitialValues}
+        onOpenChange={setRunConfigOpen}
+        onStarted={(run) => {
+          void navigate({ params: { runId: run.id }, to: "/analysis/$runId" });
+        }}
+        open={runConfigOpen}
       />
     </main>
   );

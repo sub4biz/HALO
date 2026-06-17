@@ -216,9 +216,9 @@ export function SessionList({
 
   if (sessions.length === 0) {
     return (
-      <div className="flex flex-1 p-8">
+      <div className="flex min-h-0 flex-1 p-8">
         <EmptyState
-          className="w-full self-center"
+          className="min-h-full w-full justify-center"
           description="Sessions appear when traces include a session ID. Traces without one stay hidden here."
           icon={MessageSquare}
           title="No sessions yet"

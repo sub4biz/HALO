@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import { createDatabase, ensureSchema } from "../src/server/db/client";
 import { createFileImportService } from "../src/server/fileimport/importQueue";
 import {
@@ -37,6 +38,17 @@ function writeJsonl(lines: Array<unknown | string>): string {
     .map((line) => (typeof line === "string" ? line : JSON.stringify(line)))
     .join("\n");
   writeFileSync(path, `${content}\n`, "utf8");
+  return path;
+}
+
+function writeGzippedJsonl(lines: Array<unknown | string>): string {
+  const dir = mkdtempSync(join(tmpdir(), "halo-fileimport-"));
+  tempDirs.push(dir);
+  const path = join(dir, "traces.jsonl.gz");
+  const content = lines
+    .map((line) => (typeof line === "string" ? line : JSON.stringify(line)))
+    .join("\n");
+  writeFileSync(path, gzipSync(`${content}\n`));
   return path;
 }
 
@@ -89,6 +101,25 @@ describe("JSONL parser", () => {
     expect(preview.invalidLines).toBe(1);
     expect(preview.serviceNames).toEqual(["gator-agent", "other-service"]);
     expect(preview.fileName).toBe("traces.jsonl");
+  });
+
+  test("previews gzipped JSONL exports", async () => {
+    const path = writeGzippedJsonl([
+      makeSpanRecord({
+        attributes: { "session.id": "session-1" },
+        span_id: "aaaaaaaaaaaaaaaa",
+      }),
+      makeSpanRecord({
+        parent_span_id: "aaaaaaaaaaaaaaaa",
+        span_id: "bbbbbbbbbbbbbbbb",
+      }),
+    ]);
+
+    const preview = await previewJsonlFile(path);
+    expect(preview.fileName).toBe("traces.jsonl.gz");
+    expect(preview.traces).toBe(1);
+    expect(preview.observations).toBe(2);
+    expect(preview.sessions).toBe(1);
   });
 
   test("rejects files with no importable spans", async () => {
@@ -229,6 +260,54 @@ describe("File import queue", () => {
       const llmSpan = spans.spans.find((span) => span.observationKind === "LLM");
       expect(llmSpan?.llmModelName).toBe("claude-sonnet-4-6");
       expect(llmSpan?.parentSpanId).toBe("aaaaaaaaaaaaaaaa");
+    } finally {
+      await service.close(true);
+      database.sqlite.close(false);
+    }
+  });
+
+  test("imports a gzipped JSONL file end to end", async () => {
+    const path = writeGzippedJsonl([
+      makeSpanRecord({
+        attributes: {
+          "agent.name": "Compressed Agent",
+          "openinference.span.kind": "AGENT",
+          "session.id": "session-1",
+        },
+        name: "agent.run",
+        span_id: "aaaaaaaaaaaaaaaa",
+      }),
+      makeSpanRecord({
+        attributes: {
+          "llm.model_name": "gpt-5.2",
+          "openinference.span.kind": "LLM",
+          "session.id": "session-1",
+        },
+        name: "llm.chat",
+        parent_span_id: "aaaaaaaaaaaaaaaa",
+        span_id: "bbbbbbbbbbbbbbbb",
+      }),
+    ]);
+
+    const database = createDatabase(":memory:");
+    ensureSchema(database.sqlite);
+    const live = createLiveEventStore(database.sqlite);
+    const service = createFileImportService({ database, live });
+
+    try {
+      const job = await service.start({ filePath: path });
+      const completed = await waitForImportJob(database.sqlite, job.id, "completed");
+
+      expect(completed.fileName).toBe("traces.jsonl.gz");
+      expect(completed.importedTraces).toBe(1);
+      expect(completed.importedObservations).toBe(2);
+
+      const trace = getTrace(database.sqlite, TRACE_ID);
+      expect(trace?.agentName).toBe("Compressed Agent");
+      expect(trace?.sourceConnectionName).toBe("traces.jsonl.gz");
+      expect(getSpansForTrace(database.sqlite, { traceId: TRACE_ID }).spans).toHaveLength(
+        2,
+      );
     } finally {
       await service.close(true);
       database.sqlite.close(false);

@@ -49,7 +49,6 @@ export type HaloModelProvider = {
   lastError: string | null;
   lastStatus: string;
   lastTestedAt: string | null;
-  model: string;
   name: string;
   providerType: HaloProviderType;
   updatedAt: string;
@@ -136,7 +135,7 @@ export type StartHaloRunInput = {
   maxDepth: number;
   maxParallel: number;
   maxTurns: number;
-  model?: string;
+  model: string;
   prompt: string;
   providerId: string;
   targetType: HaloRunTargetType;

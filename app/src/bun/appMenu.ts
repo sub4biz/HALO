@@ -110,7 +110,7 @@ export function buildApplicationMenu(): ApplicationMenuItemConfig[] {
       submenu: [
         {
           accelerator: "CommandOrControl+1",
-          label: "Traces",
+          label: "Data",
           action: "navigate-traces",
         },
         {

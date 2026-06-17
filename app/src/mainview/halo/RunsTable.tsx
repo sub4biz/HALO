@@ -1,4 +1,4 @@
-import { BrainCircuit, Square, Trash2 } from "lucide-react";
+import { BrainCircuit, CircleStop, Trash2 } from "lucide-react";
 
 import { Badge, Button, EmptyState, cn } from "~/lib/ui";
 import { ProgressBar, StatusBadge } from "~/components/StatusBadge";
@@ -138,12 +138,13 @@ export function RunsTable({
                 {active ? (
                   <Button
                     aria-label="Cancel run"
+                    className="text-muted-foreground hover:text-destructive"
                     onClick={() => onCancel(run)}
                     size="icon"
                     title="Cancel run"
                     variant="ghost"
                   >
-                    <Square className="h-4 w-4" />
+                    <CircleStop className="h-4 w-4" />
                   </Button>
                 ) : null}
                 <Button

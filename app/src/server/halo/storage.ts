@@ -24,7 +24,6 @@ type ProviderRow = {
   provider_type: HaloProviderType;
   base_url: string;
   api_key: string;
-  model: string;
   headers_json: string;
   last_status: string;
   last_error: string | null;
@@ -235,7 +234,6 @@ export function saveHaloProvider(
     baseUrl: string;
     headers?: Record<string, string>;
     id?: string;
-    model: string;
     name: string;
     providerType: HaloProviderType;
   },
@@ -246,15 +244,14 @@ export function saveHaloProvider(
   sqlite
     .query(
       `INSERT INTO halo_model_providers (
-        id, name, provider_type, base_url, api_key, model, headers_json,
+        id, name, provider_type, base_url, api_key, headers_json,
         last_status, last_error, last_tested_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         provider_type = excluded.provider_type,
         base_url = excluded.base_url,
         api_key = excluded.api_key,
-        model = excluded.model,
         headers_json = excluded.headers_json,
         updated_at = excluded.updated_at`,
     )
@@ -264,7 +261,6 @@ export function saveHaloProvider(
       input.providerType,
       normalizeBaseUrl(input.baseUrl),
       input.apiKey,
-      input.model,
       JSON.stringify(input.headers ?? {}),
       existing?.lastStatus ?? "unknown",
       existing?.lastError ?? null,
@@ -819,7 +815,6 @@ function mapProvider<T extends boolean>(
     lastError: row.last_error,
     lastStatus: row.last_status,
     lastTestedAt: row.last_tested_at ? isoFromMs(row.last_tested_at) : null,
-    model: row.model,
     name: row.name,
     providerType: row.provider_type,
     updatedAt: isoFromMs(row.updated_at),

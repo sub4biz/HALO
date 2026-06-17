@@ -328,7 +328,6 @@ export const haloModelProviders = sqliteTable(
     providerType: text("provider_type").notNull(),
     baseUrl: text("base_url").notNull(),
     apiKey: text("api_key").notNull(),
-    model: text("model").notNull(),
     headersJson: text("headers_json").notNull().default("{}"),
     lastStatus: text("last_status").notNull().default("unknown"),
     lastError: text("last_error"),

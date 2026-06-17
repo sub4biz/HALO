@@ -4,7 +4,6 @@ import {
   Activity,
   AlertTriangle,
   Ban,
-  DownloadCloud,
   FileUp,
   Layers3,
   Loader2,
@@ -227,12 +226,7 @@ export function FileImportDialog({
     <Dialog
       className="!w-[min(800px,92vw)] !max-w-[92vw] sm:!max-w-[800px] md:!w-[800px]"
       dialogDescription="Bring traces from a JSONL export into the local HALO timeline."
-      dialogTitle={
-        <span className="flex items-center gap-2">
-          <DownloadCloud className="h-5 w-5 text-detail-brand" />
-          Import Data
-        </span>
-      }
+      dialogTitle="Import Data"
       maxWidth={800}
       footer={
         <div className="flex items-center justify-between gap-3 border-t border-subtle px-6 py-4">
@@ -383,14 +377,14 @@ function ChooseStep({
           JSONL trace export
         </div>
         <p className="text-sm text-muted-foreground">
-          Import a .jsonl file with one span per line, the format HALO and
-          Catalyst trace exports use. Traces, sessions, models, and token
-          counts come through exactly as exported.
+          Import a .jsonl or .jsonl.gz file with one span per line, the format
+          HALO and Catalyst trace exports use. Traces, sessions, models, and
+          token counts come through exactly as exported.
         </p>
       </div>
 
       <input
-        accept=".jsonl,.json,application/jsonl,application/json"
+        accept=".jsonl,.json,.jsonl.gz,.gz,application/gzip,application/jsonl,application/json"
         className="hidden"
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
@@ -448,7 +442,7 @@ function ChooseStep({
             onKeyDown={(event) => {
               if (event.key === "Enter") onUseManualPath();
             }}
-            placeholder="/path/to/traces.jsonl"
+            placeholder="/path/to/traces.jsonl.gz"
             value={manualPath}
           />
           <Button

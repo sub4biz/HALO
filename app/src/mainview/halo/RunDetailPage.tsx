@@ -52,7 +52,7 @@ import { targetLabel, type HaloRunView } from "./runShared";
 
 const RAIL_MIN_WIDTH = 280;
 const RAIL_MAX_WIDTH = 560;
-const RAIL_DEFAULT_WIDTH = 340;
+const RAIL_DEFAULT_WIDTH = 350;
 const RAIL_WIDTH_STORAGE_KEY = "halo-run-rail-width";
 
 export function RunDetailPage({ runId }: { runId: string }) {
@@ -257,10 +257,10 @@ export function RunDetailPage({ runId }: { runId: string }) {
             onClick={() => {
               setConfigInitialValues({
                 filters: (run.filters ?? {}) as TelemetryFilters,
-                filtersSourceTitle: run.title,
                 maxDepth: run.maxDepth,
                 maxParallel: run.maxParallel,
                 maxTurns: run.maxTurns,
+                model: run.model,
                 prompt: run.prompt,
                 providerId: run.providerId ?? undefined,
                 targetType: run.targetType,

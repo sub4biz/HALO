@@ -68,7 +68,7 @@ export async function* streamJsonlSpans(
     return { record, traceId };
   };
 
-  const stream = file.stream();
+  const stream = jsonlByteStream(filePath, file);
   for await (const chunk of stream) {
     buffered += decoder.decode(chunk, { stream: true });
     let newlineIndex = buffered.indexOf("\n");
@@ -85,6 +85,12 @@ export async function* streamJsonlSpans(
     const result = flushLine(buffered);
     if (result) yield result;
   }
+}
+
+function jsonlByteStream(filePath: string, file: Bun.BunFile) {
+  const stream = file.stream();
+  if (!filePath.toLowerCase().endsWith(".gz")) return stream;
+  return stream.pipeThrough(new DecompressionStream("gzip"));
 }
 
 /**

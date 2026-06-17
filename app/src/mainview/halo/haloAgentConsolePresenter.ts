@@ -117,6 +117,26 @@ export function presentHaloAgentStep(event: HaloRunEvent): HaloAgentConsoleRow[]
     }
   }
 
+  if (event.eventType === "installing_engine") {
+    const text =
+      "Starting HALO. The local analysis engine is being prepared automatically.";
+    return [
+      {
+        ...common,
+        body: { kind: "text", text },
+        command: null,
+        copyText: text,
+        key: `${event.id}:starting-halo`,
+        kind: "message",
+        subtitle: "engine setup",
+        summaries: [],
+        title: "Starting HALO...",
+        toolCallId: null,
+        toolName: null,
+      },
+    ];
+  }
+
   const rawText = JSON.stringify(payload, null, 2);
   return [
     {

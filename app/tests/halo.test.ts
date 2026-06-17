@@ -31,7 +31,6 @@ describe("HALO provider settings", () => {
       const saved = saveHaloProvider(database.sqlite, {
         apiKey: "sk-test-1234567890",
         baseUrl: "https://api.openai.com/v1/",
-        model: "gpt-test",
         name: "OpenAI",
         providerType: "openai",
       });
@@ -163,6 +162,97 @@ describe("HALO trace export", () => {
     }
   });
 
+  test("trace-group export includes every matching trace", () => {
+    const database = createDatabase(":memory:");
+    ensureSchema(database.sqlite);
+    const traceIds = Array.from({ length: 12 }, (_, index) =>
+      `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${index.toString(16).padStart(2, "0")}`,
+    );
+    for (const traceId of traceIds) {
+      ingestTelemetry(database.sqlite, {
+        body: JSON.stringify(
+          JSON.parse(JSON.stringify(makeTracePayload()).replaceAll(TRACE_ID, traceId)),
+        ),
+        contentEncoding: "test",
+        sizeBytes: 1,
+      });
+    }
+    const outputDir = mkdtempSync(join(tmpdir(), "halo-all-trace-export-"));
+    tempDirs.push(outputDir);
+
+    try {
+      const preview = previewHaloRunExport(database.sqlite, {
+        filters: { serviceNames: ["halo-agent"] },
+        targetType: "trace_group",
+      });
+      expect(preview.traceCount).toBe(traceIds.length);
+      expect(preview.warnings).toEqual([]);
+
+      const exported = exportHaloTraceJsonl(database.sqlite, {
+        filters: { serviceNames: ["halo-agent"] },
+        outputDir,
+        runId: "run-all-traces",
+        targetType: "trace_group",
+      });
+      const exportedTraceIds = readFileSync(exported.path, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line).trace_id);
+
+      expect(new Set(exportedTraceIds)).toEqual(new Set(traceIds));
+      expect(exported.warnings).toEqual([]);
+    } finally {
+      database.sqlite.close(false);
+    }
+  });
+
+  test("trace-group export honors copied free-text filters", () => {
+    const database = createDatabase(":memory:");
+    ensureSchema(database.sqlite);
+    const otherTraceId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    ingestTelemetry(database.sqlite, {
+      body: JSON.stringify(makeTracePayload()),
+      contentEncoding: "test",
+      sizeBytes: 1,
+    });
+    ingestTelemetry(database.sqlite, {
+      body: JSON.stringify(
+        JSON.parse(
+          JSON.stringify(makeTracePayload())
+            .replaceAll(TRACE_ID, otherTraceId)
+            .replaceAll("Write a tiny plan", "Summarize unrelated logs"),
+        ),
+      ),
+      contentEncoding: "test",
+      sizeBytes: 1,
+    });
+    const outputDir = mkdtempSync(join(tmpdir(), "halo-free-text-export-"));
+    tempDirs.push(outputDir);
+
+    try {
+      const preview = previewHaloRunExport(database.sqlite, {
+        filters: { freeText: "tiny plan" },
+        targetType: "trace_group",
+      });
+      expect(preview.traceCount).toBe(1);
+
+      const exported = exportHaloTraceJsonl(database.sqlite, {
+        filters: { freeText: "tiny plan" },
+        outputDir,
+        runId: "run-free-text",
+        targetType: "trace_group",
+      });
+      const traceIds = readFileSync(exported.path, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line).trace_id);
+
+      expect(new Set(traceIds)).toEqual(new Set([TRACE_ID]));
+    } finally {
+      database.sqlite.close(false);
+    }
+  });
+
   test("session-group export includes all traces in matched sessions", () => {
     const database = createDatabase(":memory:");
     ensureSchema(database.sqlite);
@@ -190,6 +280,104 @@ describe("HALO trace export", () => {
         targetType: "session_group",
       });
       expect(readFileSync(exported.path, "utf8").trim().split("\n")).toHaveLength(2);
+    } finally {
+      database.sqlite.close(false);
+    }
+  });
+
+  test("session-group export includes every matching session", () => {
+    const database = createDatabase(":memory:");
+    ensureSchema(database.sqlite);
+    const traceIds = Array.from({ length: 12 }, (_, index) =>
+      `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb${index.toString(16).padStart(2, "0")}`,
+    );
+    for (const [index, traceId] of traceIds.entries()) {
+      ingestTelemetry(database.sqlite, {
+        body: JSON.stringify(
+          JSON.parse(
+            JSON.stringify(makeTracePayload())
+              .replaceAll(TRACE_ID, traceId)
+              .replaceAll("session-1", `session-${index}`),
+          ),
+        ),
+        contentEncoding: "test",
+        sizeBytes: 1,
+      });
+    }
+    const outputDir = mkdtempSync(join(tmpdir(), "halo-all-session-export-"));
+    tempDirs.push(outputDir);
+
+    try {
+      const preview = previewHaloRunExport(database.sqlite, {
+        filters: { serviceNames: ["halo-agent"] },
+        targetType: "session_group",
+      });
+      expect(preview.sessionCount).toBe(traceIds.length);
+      expect(preview.traceCount).toBe(traceIds.length);
+      expect(preview.warnings).toEqual([]);
+
+      const exported = exportHaloTraceJsonl(database.sqlite, {
+        filters: { serviceNames: ["halo-agent"] },
+        outputDir,
+        runId: "run-all-sessions",
+        targetType: "session_group",
+      });
+      const exportedTraceIds = readFileSync(exported.path, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line).trace_id);
+
+      expect(new Set(exportedTraceIds)).toEqual(new Set(traceIds));
+      expect(exported.warnings).toEqual([]);
+    } finally {
+      database.sqlite.close(false);
+    }
+  });
+
+  test("session-group export honors copied free-text filters", () => {
+    const database = createDatabase(":memory:");
+    ensureSchema(database.sqlite);
+    const otherTraceId = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    ingestTelemetry(database.sqlite, {
+      body: JSON.stringify(makeTracePayload()),
+      contentEncoding: "test",
+      sizeBytes: 1,
+    });
+    ingestTelemetry(database.sqlite, {
+      body: JSON.stringify(
+        JSON.parse(
+          JSON.stringify(makeTracePayload())
+            .replaceAll(TRACE_ID, otherTraceId)
+            .replaceAll("session-1", "session-2")
+            .replaceAll("Write a tiny plan", "Summarize unrelated logs"),
+        ),
+      ),
+      contentEncoding: "test",
+      sizeBytes: 1,
+    });
+    const outputDir = mkdtempSync(join(tmpdir(), "halo-session-free-text-export-"));
+    tempDirs.push(outputDir);
+
+    try {
+      const preview = previewHaloRunExport(database.sqlite, {
+        filters: { freeText: "tiny plan" },
+        targetType: "session_group",
+      });
+      expect(preview.sessionCount).toBe(1);
+      expect(preview.traceCount).toBe(1);
+
+      const exported = exportHaloTraceJsonl(database.sqlite, {
+        filters: { freeText: "tiny plan" },
+        outputDir,
+        runId: "run-session-free-text",
+        targetType: "session_group",
+      });
+      const traceIds = readFileSync(exported.path, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line).trace_id);
+
+      expect(new Set(traceIds)).toEqual(new Set([TRACE_ID]));
     } finally {
       database.sqlite.close(false);
     }

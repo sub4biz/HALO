@@ -214,7 +214,6 @@ const haloProviderInputSchema = z.object({
   baseUrl: z.string().min(1),
   headers: z.record(z.string(), z.string()).optional(),
   id: z.string().min(1).optional(),
-  model: z.string().min(1),
   name: z.string().min(1).max(120),
   providerType: haloProviderTypeSchema,
 });
@@ -223,7 +222,7 @@ const haloRunStartSchema = z.object({
   maxDepth: z.number().int().min(0).max(8).default(1),
   maxParallel: z.number().int().min(1).max(8).default(2),
   maxTurns: z.number().int().min(1).max(50).default(8),
-  model: z.string().min(1).optional(),
+  model: z.string().min(1),
   prompt: z.string().min(1).max(20000),
   providerId: z.string().min(1),
   targetType: haloRunTargetTypeSchema,

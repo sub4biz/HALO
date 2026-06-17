@@ -115,7 +115,7 @@ export function DesktopCommandCenter() {
     (command: DesktopCommandName) => {
       if (command === "navigate-sessions") {
         void navigate({
-          to: "/traces",
+          to: "/data",
           search: { view: "sessions" },
         } as unknown as NavigateOptions);
         return;
@@ -133,12 +133,12 @@ export function DesktopCommandCenter() {
 
   const dispatchTraceCommand = useCallback(
     (command: TracePageCommand) => {
-      if (path === "/" || path === "/traces") {
+      if (path === "/" || path === "/data" || path === "/traces") {
         dispatchTracePageCommand(command);
         return;
       }
 
-      void navigate({ to: "/traces" } as NavigateOptions).then(() => {
+      void navigate({ to: "/data" } as NavigateOptions).then(() => {
         window.setTimeout(() => dispatchTracePageCommand(command), 80);
       });
     },
@@ -224,7 +224,7 @@ export function DesktopCommandCenter() {
           break;
         }
         case "refresh":
-          if (path === "/" || path === "/traces") {
+          if (path === "/" || path === "/data" || path === "/traces") {
             dispatchTraceCommand({ type: "refresh" });
           } else {
             void queryClient.invalidateQueries();
@@ -241,11 +241,11 @@ export function DesktopCommandCenter() {
           break;
         }
         case "toggle-follow-latest": {
-          if (path === "/traces" && search.view !== "sessions") {
+          if ((path === "/data" || path === "/traces") && search.view !== "sessions") {
             dispatchTraceCommand({ type: "toggle-follow-latest" });
           } else {
             void navigate({
-              to: "/traces",
+              to: "/data",
               search: {
                 followLatest: 1,
                 traceId: undefined,

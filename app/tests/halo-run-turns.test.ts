@@ -19,6 +19,7 @@ import {
   updateHaloRun,
   updateHaloRunTurn,
 } from "../src/server/halo/storage";
+import { withDashboardRenderingInstruction } from "../src/server/halo/runQueue";
 
 function setup() {
   const sqlite = createSqlite();
@@ -41,6 +42,7 @@ function setup() {
 describe("halo run turns", () => {
   test("createHaloRunTurns seeds the first user/assistant pair", () => {
     const { run, sqlite } = setup();
+    expect(run.model).toBe("test-model");
     const turns = createHaloRunTurns(sqlite, run);
     expect(turns).toHaveLength(2);
     expect(turns[0]).toMatchObject({
@@ -87,6 +89,25 @@ describe("halo run turns", () => {
       { content: "Answer one.", role: "assistant" },
       { content: "What about retries?", role: "user" },
     ]);
+  });
+
+  test("withDashboardRenderingInstruction wraps only the first user message", () => {
+    const messages = withDashboardRenderingInstruction([
+      { content: "Find the slow spans.", role: "user" },
+      { content: "Answer one.", role: "assistant" },
+      { content: "What about retries?", role: "user" },
+    ]);
+
+    expect(messages[0]?.content).toContain("Dashboard rendering instruction:");
+    expect(messages[0]?.content).toContain(
+      "- Trace: [trace:<lowercase hex trace id>]",
+    );
+    expect(messages[0]?.content).toContain(
+      "- Span: [span:<lowercase hex trace id>:<lowercase hex span id>]",
+    );
+    expect(messages[0]?.content.endsWith("Find the slow spans.")).toBe(true);
+    expect(messages[1]).toEqual({ content: "Answer one.", role: "assistant" });
+    expect(messages[2]).toEqual({ content: "What about retries?", role: "user" });
   });
 
   test("legacy runs synthesize a two-turn conversation and persist on append", () => {

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Activity, ArrowRight, FileUp, Terminal } from "lucide-react";
+import { Activity, ArrowRight, FileUp } from "lucide-react";
 
 import {
   Badge,
@@ -24,24 +24,19 @@ export function ImportDataScreen({
   return (
     <div className="flex h-full min-h-[calc(100vh-3.5rem)] items-center justify-center overflow-auto p-8">
       <div className="w-full max-w-3xl">
-        <div className="mb-8 text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-detail-brand">
-            HALO setup
-          </p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-normal">
-            Bring your agent traces into HALO
+        <div className="mb-8">
+          <h1 className="text-3xl font-medium tracking-normal">
+            Import Agent Traces
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-base text-muted-foreground">
-            Import historical traces or connect a live agent, then let HALO's
-            analysis find the failures and bottlenecks for you.
+          <p className="mt-3 max-w-xl text-base text-muted-foreground">
+            Import existing data from a provider, upload a file, or connect a
+            live agent.
           </p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <ImportDataActionCard
-            badge="Recommended"
             description="Bring historical traces from a Langfuse project into this local HALO timeline."
             estimatedTime="Est time: 2-5 minutes"
-            highlighted
             icon={
               <span className="grid h-11 w-11 place-items-center rounded-xl bg-background-muted">
                 <LangfuseLogo className="h-7 w-7" />
@@ -103,13 +98,8 @@ export function LocalAgentSetupDialog({
   return (
     <Dialog
       className="!w-[min(760px,92vw)] !max-w-[92vw] sm:!max-w-[760px] md:!w-[760px]"
-      dialogDescription="Send local OTLP or JSON traces to HALO and watch the monitor populate live."
-      dialogTitle={
-        <span className="flex items-center gap-2">
-          <Activity className="h-5 w-5 text-detail-brand" />
-          Connect Local Agent
-        </span>
-      }
+      dialogDescription="Send OLTP data to HALO from a locally running agent."
+      dialogTitle="Connect Local Agent"
       footer={
         <div className="flex justify-end border-t border-subtle px-6 py-4">
           <DialogClose asChild>
@@ -124,20 +114,6 @@ export function LocalAgentSetupDialog({
       open={open}
     >
       <div className="space-y-5">
-        <div className="rounded-xl border border-subtle bg-background-muted p-4">
-          <div className="flex items-start gap-3">
-            <Terminal className="mt-0.5 h-4 w-4 shrink-0 text-detail-brand" />
-            <div>
-              <p className="font-medium">Send traces to the ingest endpoint</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                Use this endpoint in a local Catalyst agent, OpenTelemetry
-                collector, or JSON trace exporter. The first accepted span
-                switches this screen back to the live trace monitor.
-              </p>
-            </div>
-          </div>
-        </div>
-
         <SetupCommandRow
           label="Environment variable"
           toastDescription="Paste this into your local agent environment."
@@ -149,19 +125,6 @@ export function LocalAgentSetupDialog({
           value={ingestUrl}
         />
 
-        <div className="rounded-xl border border-subtle bg-background-muted p-4">
-          <p className="font-medium">Smoke test</p>
-          <CommandBlock
-            className="mt-3 bg-background"
-            cmd="bun run fire:test-spans"
-            toastDescription="Run this from the HALO repo after local services are up."
-            wrap={false}
-          />
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Run the test flow once your local services are up to send a sample
-            trace batch into HALO.
-          </p>
-        </div>
       </div>
     </Dialog>
   );
@@ -201,7 +164,7 @@ function ImportDataActionCard({
           </Badge>
         ) : null}
       </div>
-      <h2 className="mt-5 flex items-center gap-1.5 text-xl font-semibold tracking-normal">
+      <h2 className="mt-5 flex items-center gap-1.5 text-xl font-medium tracking-normal">
         {title}
         <ArrowRight className="h-4 w-4 -translate-x-1 text-muted-foreground opacity-0 transition group-hover:translate-x-0 group-hover:opacity-100" />
       </h2>

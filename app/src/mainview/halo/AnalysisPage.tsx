@@ -1,10 +1,9 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Filter, Play, Trash2 } from "lucide-react";
+import { CircleStop, Filter, Play, Trash2 } from "lucide-react";
 
 import { Button, Dialog, EmptyState, cn, toast } from "~/lib/ui";
 import { trpc } from "~/trpc";
-import { SetupNudgeBanner } from "~/onboarding/OnboardingPage";
 import { WorkspaceNav } from "~/workspace/WorkspaceNav";
 import { AppHeader } from "~/components/AppHeader";
 import { FilterSelect } from "~/components/FilterSelect";
@@ -37,6 +36,7 @@ export function AnalysisPage() {
   const [configInitialValues, setConfigInitialValues] = useState<
     RunConfigInitialValues | undefined
   >(undefined);
+  const [runPendingCancel, setRunPendingCancel] = useState<HaloRunView | null>(null);
   const [runPendingDelete, setRunPendingDelete] = useState<HaloRunView | null>(null);
   const listInvalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,8 +78,12 @@ export function AnalysisPage() {
 
   const cancelMutation = trpc.halo.runs.cancel.useMutation({
     async onSuccess() {
+      setRunPendingCancel(null);
       toast.success({ title: "HALO run cancelled" });
       await utils.halo.runs.list.invalidate();
+    },
+    onError(error) {
+      toast.error({ title: "Could not cancel run", description: error.message });
     },
   });
   const deleteMutation = trpc.halo.runs.delete.useMutation({
@@ -131,8 +135,8 @@ export function AnalysisPage() {
               <div>
                 <h1 className="text-2xl tracking-normal">Analysis</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  HALO's RLM digs through your traces and reports what's broken
-                  and how to fix it.
+                  Select traces to generate a HALO report on what's broken and
+                  how to fix it.
                 </p>
               </div>
               <Button
@@ -145,8 +149,6 @@ export function AnalysisPage() {
                 Run Analysis
               </Button>
             </div>
-
-            <SetupNudgeBanner />
 
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -198,7 +200,7 @@ export function AnalysisPage() {
               />
             ) : (
               <RunsTable
-                onCancel={(run) => cancelMutation.mutate({ runId: run.id })}
+                onCancel={setRunPendingCancel}
                 onDelete={setRunPendingDelete}
                 onOpen={openRun}
                 onRunAnalysis={() => {
@@ -220,6 +222,35 @@ export function AnalysisPage() {
         }}
         open={configOpen}
       />
+
+      <Dialog
+        cancelTitle="Keep running"
+        confirmButtonVariant="destructive"
+        confirmTitle="Cancel run"
+        dialogDescription={`This stops "${runPendingCancel?.title ?? ""}" and marks the analysis as cancelled. You can start another run later.`}
+        dialogTitle="Cancel this HALO run?"
+        disabled={cancelMutation.isPending}
+        loading={cancelMutation.isPending}
+        onConfirm={() => {
+          if (runPendingCancel) {
+            cancelMutation.mutate({ runId: runPendingCancel.id });
+          }
+        }}
+        onOpenChange={(open) => {
+          if (!open) setRunPendingCancel(null);
+        }}
+        open={Boolean(runPendingCancel)}
+      >
+        <div className="rounded-md border border-destructive-border bg-destructive/5 p-4 text-sm">
+          <div className="flex items-start gap-3">
+            <CircleStop className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+            <p className="text-muted-foreground">
+              Any in-progress engine work will be interrupted. Completed run data
+              and previous reports stay in this workspace.
+            </p>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog
         cancelTitle="Cancel"

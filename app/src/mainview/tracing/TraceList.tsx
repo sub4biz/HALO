@@ -204,9 +204,9 @@ export function TraceList({
 
   if (traces.length === 0) {
     return (
-      <div className="flex flex-1 p-8">
+      <div className="flex min-h-0 flex-1 p-8">
         <EmptyState
-          className="w-full self-center"
+          className="min-h-full w-full justify-center"
           description="Broaden the filters or wait for another local ingest batch."
           icon={Search}
           title="No matching traces"

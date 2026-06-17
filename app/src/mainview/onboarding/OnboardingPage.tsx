@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowRight,
@@ -6,79 +6,31 @@ import {
   CheckCircle2,
   DownloadCloud,
   FileUp,
-  KeyRound,
-  Loader2,
   Radio,
-  RefreshCcw,
   Sparkles,
-  XCircle,
 } from "lucide-react";
 
-import { Button, Input, cn, toast } from "~/lib/ui";
+import { Button, cn } from "~/lib/ui";
 import { trpc } from "~/trpc";
+import { ModelProviderDialog } from "~/halo/ModelProviderDialog";
 import { LangfuseLogo, PhoenixLogo } from "~/tracing/ImportDataScreen";
 import { APP_CATALYST_URL } from "../../desktop/commands";
 import { openExternalUrl } from "../desktop/desktopBridge";
 
-type OnboardingStep = "welcome" | "model" | "engine" | "traces";
+type OnboardingStep = "welcome" | "model" | "traces";
 
 const STEPS: Array<{ id: OnboardingStep; label: string }> = [
   { id: "welcome", label: "Welcome" },
   { id: "model", label: "Model" },
-  { id: "engine", label: "Engine" },
-  { id: "traces", label: "Traces" },
+  { id: "traces", label: "Data" },
 ];
-
-const PROVIDER_PRESETS = {
-  anthropic_compat: {
-    baseUrl: "https://api.anthropic.com/v1",
-    keyPlaceholder: "sk-ant-…",
-    model: "claude-sonnet-4-20250514",
-    name: "Anthropic",
-  },
-  openai: {
-    baseUrl: "https://api.openai.com/v1",
-    keyPlaceholder: "sk-…",
-    model: "gpt-4.1-mini",
-    name: "OpenAI",
-  },
-} as const;
-
-type PresetId = keyof typeof PROVIDER_PRESETS | "custom";
 
 export function OnboardingPage() {
   const navigate = useNavigate();
   const utils = trpc.useUtils();
   const [step, setStep] = useState<OnboardingStep>("welcome");
 
-  const engineQuery = trpc.halo.engine.status.useQuery(undefined, {
-    refetchInterval: (query) =>
-      query.state.data?.status === "installing" ? 1_500 : 5_000,
-    // Users routinely switch away mid-onboarding (fetching an API key from
-    // the browser) while the engine installs — keep the progress fresh even
-    // when the window is hidden.
-    refetchIntervalInBackground: true,
-  });
   const providersQuery = trpc.halo.providers.list.useQuery();
-
-  const installMutation = trpc.halo.engine.installOrUpdate.useMutation({
-    async onSettled() {
-      await utils.halo.engine.status.invalidate();
-    },
-  });
-
-  // Download the engine in the background the moment onboarding opens, so the
-  // install usually finishes while the user reads the welcome copy and enters
-  // a key. Only auto-start from a clean slate — a previous error waits for an
-  // explicit retry.
-  const autoInstallStarted = useRef(false);
-  const engineStatus = engineQuery.data?.status;
-  useEffect(() => {
-    if (autoInstallStarted.current) return;
-    if (engineStatus !== "not_installed") return;
-    autoInstallStarted.current = true;
-    installMutation.mutate();
-  }, [engineStatus, installMutation]);
 
   const completeMutation = trpc.onboarding.complete.useMutation({
     async onSuccess() {
@@ -117,14 +69,6 @@ export function OnboardingPage() {
             <ModelStep
               connectedProviderName={providersQuery.data?.[0]?.name ?? null}
               onContinue={goNext}
-            />
-          ) : null}
-          {step === "engine" ? (
-            <EngineStep
-              installing={installMutation.isPending}
-              onContinue={goNext}
-              onRetry={() => installMutation.mutate()}
-              status={engineQuery.data}
             />
           ) : null}
           {step === "traces" ? (
@@ -214,61 +158,12 @@ function ModelStep({
   connectedProviderName: string | null;
   onContinue: () => void;
 }) {
-  const utils = trpc.useUtils();
-  const [preset, setPreset] = useState<PresetId>("openai");
-  const [apiKey, setApiKey] = useState("");
-  const [customBaseUrl, setCustomBaseUrl] = useState("");
-  const [customModel, setCustomModel] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const saveMutation = trpc.halo.providers.save.useMutation();
-  const testMutation = trpc.halo.providers.test.useMutation();
-
-  const presetConfig = preset === "custom" ? null : PROVIDER_PRESETS[preset];
-  const baseUrl = presetConfig?.baseUrl ?? customBaseUrl;
-  const model = presetConfig?.model ?? customModel;
-  const canSave = Boolean(apiKey.trim() && baseUrl.trim() && model.trim());
-
-  const saveAndContinue = async () => {
-    setSaving(true);
-    try {
-      const provider = await saveMutation.mutateAsync({
-        apiKey: apiKey.trim(),
-        baseUrl: baseUrl.trim(),
-        model: model.trim(),
-        name: presetConfig?.name ?? "Custom provider",
-        providerType: preset === "custom" ? "custom" : preset,
-      });
-      await utils.halo.providers.list.invalidate();
-      try {
-        await testMutation.mutateAsync({ id: provider.id });
-        toast.success({ title: `${provider.name} connected` });
-      } catch (error) {
-        // Some keys lack permission for the /models probe yet work fine for
-        // completions, so a failed test warns instead of blocking.
-        toast.warning({
-          title: "Saved, but the connection test failed",
-          description:
-            error instanceof Error
-              ? error.message
-              : "You can re-test it any time in Settings.",
-        });
-      }
-      onContinue();
-    } catch (error) {
-      toast.error({
-        title: "Could not save the provider",
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
 
   return (
     <div className="space-y-6">
       <StepHeading
-        eyebrow="Step 2 of 4"
+        eyebrow="Step 2 of 3"
         title="Connect a model"
         description="HALO's analysis engine uses your API key to reason over your traces. The key is stored in the local database and never leaves this machine."
       />
@@ -283,261 +178,35 @@ function ModelStep({
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <ProviderCard
-          description="GPT models via api.openai.com"
-          label="OpenAI"
-          onSelect={() => setPreset("openai")}
-          selected={preset === "openai"}
-        />
-        <ProviderCard
-          description="Claude models via api.anthropic.com"
-          label="Anthropic"
-          onSelect={() => setPreset("anthropic_compat")}
-          selected={preset === "anthropic_compat"}
-        />
-      </div>
-
-      <div className="space-y-3">
-        {preset === "custom" ? (
-          <>
-            <Input
-              label="Base URL"
-              hint="Any OpenAI-compatible /v1 endpoint."
-              onChange={(event) => setCustomBaseUrl(event.currentTarget.value)}
-              placeholder="https://my-gateway.example.com/v1"
-              value={customBaseUrl}
-            />
-            <Input
-              label="Model"
-              onChange={(event) => setCustomModel(event.currentTarget.value)}
-              placeholder="Model id"
-              value={customModel}
-            />
-          </>
-        ) : null}
-        <Input
-          label={`${presetConfig?.name ?? "Provider"} API key`}
-          hint={
-            presetConfig
-              ? `Uses ${presetConfig.model} at ${presetConfig.baseUrl}. Both can be changed later in Settings.`
-              : undefined
-          }
-          onChange={(event) => setApiKey(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && canSave && !saving) {
-              void saveAndContinue();
-            }
-          }}
-          placeholder={presetConfig?.keyPlaceholder ?? "API key"}
-          type="password"
-          value={apiKey}
-        />
-        <button
-          className="text-xs text-muted-foreground underline-offset-4 transition hover:text-foreground hover:underline"
-          onClick={() => setPreset(preset === "custom" ? "openai" : "custom")}
-          type="button"
+      <div className="rounded-xl border border-subtle bg-card p-6 text-center">
+        <p className="text-lg font-medium">
+          {connectedProviderName ? "Model provider connected" : "Add a model provider"}
+        </p>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+          Use OpenAI, Anthropic, or a custom OpenAI-compatible endpoint. You can
+          manage providers later in Settings.
+        </p>
+        <Button
+          className="mt-5"
+          onClick={() => setProviderDialogOpen(true)}
+          size="lg"
         >
-          {preset === "custom"
-            ? "Use an OpenAI or Anthropic preset instead"
-            : "Use a custom OpenAI-compatible endpoint instead"}
-        </button>
+          {connectedProviderName ? "Add another provider" : "Add provider"}
+        </Button>
       </div>
 
       <div className="flex items-center justify-center gap-3">
-        <Button disabled={!canSave || saving} onClick={() => void saveAndContinue()}>
-          {saving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <KeyRound className="mr-2 h-4 w-4" />
-          )}
-          Save and continue
-        </Button>
         <Button onClick={onContinue} variant="ghost">
           {connectedProviderName ? "Continue" : "Skip for now"}
         </Button>
       </div>
-    </div>
-  );
-}
 
-const ENGINE_PHASES = [
-  "Downloading the HALO repository…",
-  "Installing Python dependencies…",
-  "Verifying the engine…",
-] as const;
-
-function EngineStep({
-  installing,
-  onContinue,
-  onRetry,
-  status,
-}: {
-  installing: boolean;
-  onContinue: () => void;
-  onRetry: () => void;
-  status:
-    | {
-        status: "not_installed" | "installing" | "installed" | "error";
-        statusDetail: string | null;
-        lastError: string | null;
-        commitSha: string | null;
-        checks: { git: string | null; uv: string | null; python: string | null };
-      }
-    | undefined;
-}) {
-  const state = status?.status ?? "not_installed";
-  const busy = state === "installing" || installing;
-
-  return (
-    <div className="space-y-6">
-      <StepHeading
-        eyebrow="Step 3 of 4"
-        title="The HALO engine"
-        description="Analysis runs are powered by a local engine. HALO downloads it from GitHub and runs it on this machine with uv, so your traces never leave your computer."
+      <ModelProviderDialog
+        onOpenChange={setProviderDialogOpen}
+        onSaved={onContinue}
+        open={providerDialogOpen}
+        submitLabel="Save and continue"
       />
-
-      <div className="rounded-xl border border-subtle bg-card p-6">
-        {state === "installed" ? (
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-full bg-detail-success/10 text-detail-success">
-              <CheckCircle2 className="h-6 w-6" />
-            </span>
-            <p className="text-lg font-semibold">The HALO engine is ready</p>
-            <p className="text-sm text-muted-foreground">
-              {status?.commitSha
-                ? `Installed at commit ${status.commitSha}.`
-                : "Installed and verified."}{" "}
-              It started downloading the moment you opened this screen.
-            </p>
-          </div>
-        ) : busy ? (
-          <div className="space-y-4 py-2">
-            <div className="flex items-center justify-center gap-2.5">
-              <Loader2 className="h-5 w-5 animate-spin text-detail-brand" />
-              <p className="text-lg font-semibold">Setting up the engine…</p>
-            </div>
-            <PhaseChecklist activeDetail={status?.statusDetail ?? null} />
-            <p className="text-center text-xs text-muted-foreground">
-              Usually takes a minute or two. You can keep going — this finishes
-              in the background.
-            </p>
-          </div>
-        ) : state === "error" ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5">
-              <XCircle className="h-5 w-5 shrink-0 text-detail-failure" />
-              <p className="text-lg font-semibold">The install hit a problem</p>
-            </div>
-            {status?.lastError ? (
-              <p className="max-h-28 overflow-auto rounded-md border border-detail-failure/30 bg-detail-failure/10 p-3 text-xs text-muted-foreground">
-                {status.lastError}
-              </p>
-            ) : null}
-            <PrerequisiteList checks={status?.checks} />
-            <div className="flex justify-center">
-              <Button onClick={onRetry} variant="secondary">
-                <RefreshCcw className="mr-2 h-4 w-4" />
-                Retry install
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <p className="text-lg font-semibold">Engine not installed yet</p>
-            <Button onClick={onRetry}>
-              <DownloadCloud className="mr-2 h-4 w-4" />
-              Download the engine
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center justify-center gap-3">
-        <Button disabled={state !== "installed"} onClick={onContinue}>
-          Continue
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-        {state !== "installed" ? (
-          <Button onClick={onContinue} variant="ghost">
-            {busy ? "Continue while it installs" : "Skip for now"}
-          </Button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function PhaseChecklist({ activeDetail }: { activeDetail: string | null }) {
-  // "Updating…" replaces "Downloading…" on re-installs; treat it as phase one.
-  const normalizedDetail =
-    activeDetail === "Updating the HALO repository…"
-      ? ENGINE_PHASES[0]
-      : activeDetail;
-  const activeIndex = Math.max(
-    0,
-    ENGINE_PHASES.findIndex((phase) => phase === normalizedDetail),
-  );
-  return (
-    <div className="mx-auto w-fit space-y-2">
-      {ENGINE_PHASES.map((phase, index) => (
-        <div
-          className={cn(
-            "flex items-center gap-2.5 text-sm",
-            index < activeIndex
-              ? "text-muted-foreground"
-              : index === activeIndex
-                ? "text-foreground"
-                : "text-muted-foreground/50",
-          )}
-          key={phase}
-        >
-          {index < activeIndex ? (
-            <CheckCircle2 className="h-4 w-4 text-detail-success" />
-          ) : index === activeIndex ? (
-            <Loader2 className="h-4 w-4 animate-spin text-detail-brand" />
-          ) : (
-            <span className="grid h-4 w-4 place-items-center">
-              <span className="h-1.5 w-1.5 rounded-full bg-border" />
-            </span>
-          )}
-          {phase.replace(/…$/, "")}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function PrerequisiteList({
-  checks,
-}: {
-  checks: { git: string | null; uv: string | null; python: string | null } | undefined;
-}) {
-  const rows = [
-    { hint: "https://git-scm.com", label: "git", value: checks?.git },
-    { hint: "https://docs.astral.sh/uv", label: "uv", value: checks?.uv },
-    { hint: "Python 3.12", label: "python", value: checks?.python },
-  ];
-  return (
-    <div className="rounded-md border border-subtle bg-background-muted p-3">
-      <p className="text-xs font-semibold uppercase text-muted-foreground">
-        Prerequisites
-      </p>
-      <div className="mt-2 space-y-1.5">
-        {rows.map((row) => (
-          <div className="flex items-center gap-2 text-sm" key={row.label}>
-            {row.value ? (
-              <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-detail-success" />
-            ) : (
-              <XCircle className="h-3.5 w-3.5 shrink-0 text-detail-failure" />
-            )}
-            <span className="font-mono text-xs">{row.label}</span>
-            <span className="truncate text-xs text-muted-foreground">
-              {row.value ?? `missing — install from ${row.hint}`}
-            </span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -550,7 +219,7 @@ function TracesStep({
   return (
     <div className="space-y-6">
       <StepHeading
-        eyebrow="Step 4 of 4"
+        eyebrow="Step 3 of 3"
         title="Bring in your traces"
         description="HALO comes alive once traces arrive. Import history from another tool, or point a live agent at the local endpoint."
       />
@@ -579,42 +248,6 @@ function TracesStep({
           Open HALO
         </Button>
       </div>
-    </div>
-  );
-}
-
-/**
- * Banner for analysis surfaces when run prerequisites are missing. Quietly
- * disappears once both the engine and a provider are configured.
- */
-export function SetupNudgeBanner() {
-  const engineQuery = trpc.halo.engine.status.useQuery();
-  const providersQuery = trpc.halo.providers.list.useQuery();
-  if (!engineQuery.data || !providersQuery.data) return null;
-
-  const missingEngine = engineQuery.data.status !== "installed";
-  const missingProvider = providersQuery.data.length === 0;
-  if (!missingEngine && !missingProvider) return null;
-
-  const missing =
-    missingEngine && missingProvider
-      ? "the HALO engine and a model API key"
-      : missingEngine
-        ? "the HALO engine"
-        : "a model API key";
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-detail-brand/30 bg-detail-brand/5 px-4 py-3">
-      <div className="flex min-w-0 items-center gap-2.5 text-sm">
-        <Sparkles className="h-4 w-4 shrink-0 text-detail-brand" />
-        <span>
-          Analysis runs need {missing}. Finish setup to start finding failures
-          in your traces.
-        </span>
-      </div>
-      <Button asChild size="sm" variant="secondary">
-        <Link to="/welcome">Finish setup</Link>
-      </Button>
     </div>
   );
 }
@@ -678,39 +311,6 @@ function FlowNode({ highlight, label }: { highlight?: boolean; label: string }) 
 
 function FlowArrow() {
   return <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />;
-}
-
-function ProviderCard({
-  description,
-  label,
-  onSelect,
-  selected,
-}: {
-  description: string;
-  label: string;
-  onSelect: () => void;
-  selected: boolean;
-}) {
-  return (
-    <button
-      className={cn(
-        "rounded-[18px] border bg-card p-4 text-left transition hover:bg-card-hover/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected
-          ? "border-detail-brand/50 ring-1 ring-detail-brand/30"
-          : "border-border/70 hover:border-border",
-      )}
-      onClick={onSelect}
-      type="button"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-semibold">{label}</p>
-        {selected ? (
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-detail-brand" />
-        ) : null}
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </button>
-  );
 }
 
 function ImportOptionCard({

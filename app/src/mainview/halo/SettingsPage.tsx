@@ -2,13 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   Copy,
-  Database,
   DownloadCloud,
-  FolderOpen,
   Loader2,
   Palette,
   RefreshCcw,
-  Save,
   Trash2,
 } from "lucide-react";
 
@@ -23,8 +20,8 @@ import {
 import { trpc } from "~/trpc";
 import { WorkspaceNav } from "~/workspace/WorkspaceNav";
 import { AppHeader } from "~/components/AppHeader";
-import { FilterSelect } from "~/components/FilterSelect";
 import { StatusBadge } from "~/components/StatusBadge";
+import { ModelProviderDialog } from "./ModelProviderDialog";
 import { getDesktopAppMetadata } from "../desktop/desktopBridge";
 import {
   APP_BUNDLE_ID,
@@ -38,11 +35,7 @@ export function SettingsPage() {
   const engineQuery = trpc.halo.engine.status.useQuery();
   const providersQuery = trpc.halo.providers.list.useQuery();
   const telemetryInfoQuery = trpc.telemetry.info.useQuery();
-  const [providerType, setProviderType] = useState<"openai" | "anthropic_compat" | "custom">("openai");
-  const [name, setName] = useState("OpenAI");
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
-  const [model, setModel] = useState("gpt-4.1-mini");
-  const [apiKey, setApiKey] = useState("");
+  const [providerDialogOpen, setProviderDialogOpen] = useState(false);
   const [providerPendingDelete, setProviderPendingDelete] = useState<
     { id: string; name: string } | null
   >(null);
@@ -97,16 +90,6 @@ export function SettingsPage() {
     },
     onError(error) {
       toast.error({ title: "HALO install failed", description: error.message });
-    },
-  });
-  const saveProviderMutation = trpc.halo.providers.save.useMutation({
-    async onSuccess() {
-      toast.success({ title: "Provider saved" });
-      setApiKey("");
-      await utils.halo.providers.list.invalidate();
-    },
-    onError(error) {
-      toast.error({ title: "Could not save provider", description: error.message });
     },
   });
   const testProviderMutation = trpc.halo.providers.test.useMutation({
@@ -195,17 +178,80 @@ export function SettingsPage() {
                 Configure the local HALO engine and model providers.
               </p>
             </div>
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
             <div className="space-y-5">
               <section className="rounded-xl border border-subtle bg-card">
-                <div className="flex items-start gap-3 border-b border-subtle p-5">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-subtle bg-background-muted">
-                    <Palette className="h-4 w-4 text-detail-brand" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="text-xl font-semibold">Workspace</h1>
+                <div className="flex items-start justify-between gap-4 border-b border-subtle p-5">
+                  <div>
+                    <h2 className="text-lg font-medium">Model providers</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Appearance and local runtime details for this desktop app.
+                      Keys are stored in the local SQLite database and masked in
+                      the UI.
+                    </p>
+                  </div>
+                  <Button onClick={() => setProviderDialogOpen(true)} size="sm">
+                    Add Provider
+                  </Button>
+                </div>
+                <div className="divide-y divide-subtle">
+                  {providers.length === 0 ? (
+                    <div className="p-5 text-sm text-muted-foreground">
+                      No providers saved yet.
+                    </div>
+                  ) : (
+                    providers.map((provider) => (
+                      <div
+                        className="flex items-center justify-between gap-4 p-5"
+                        key={provider.id}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate font-medium">{provider.name}</p>
+                            <StatusBadge status={provider.lastStatus} />
+                          </div>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {provider.baseUrl} · {provider.apiKeyMasked}
+                          </p>
+                          {provider.lastError ? (
+                            <p className="mt-1 text-xs text-destructive">
+                              {provider.lastError}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Button
+                            disabled={testProviderMutation.isPending}
+                            onClick={() => testProviderMutation.mutate({ id: provider.id })}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Test
+                          </Button>
+                          <Button
+                            aria-label={`Delete provider ${provider.name}`}
+                            onClick={() =>
+                              setProviderPendingDelete({
+                                id: provider.id,
+                                name: provider.name,
+                              })
+                            }
+                            size="icon"
+                            variant="ghost"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-subtle bg-card">
+                <div className="flex items-start gap-3 border-b border-subtle p-5">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-lg font-medium">Data Management</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Manage local telemetry, database details, and reset options.
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -227,32 +273,18 @@ export function SettingsPage() {
                     />
                   </div>
                 </div>
-                <div className="divide-y divide-subtle px-5">
-                  <DefinitionRow
-                    copyable
-                    label="Database path"
-                    value={metadata.dbPath}
-                  />
-                  <DefinitionRow
-                    label="Stored telemetry"
-                    value={`${telemetryInfo?.traceCount ?? 0} traces · ${telemetryInfo?.spanCount ?? 0} spans`}
-                  />
-                </div>
-              </section>
-
-              <section className="rounded-xl border border-subtle bg-card">
-                <div className="flex items-start gap-3 border-b border-subtle p-5">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-subtle bg-background-muted">
-                    <Database className="h-4 w-4 text-detail-brand" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold">Data management</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Remove local telemetry or reset HALO back to a clean setup.
-                    </p>
-                  </div>
-                </div>
                 <div className="divide-y divide-subtle">
+                  <div className="px-5">
+                    <DefinitionRow
+                      copyable
+                      label="Database path"
+                      value={metadata.dbPath}
+                    />
+                    <DefinitionRow
+                      label="Stored telemetry"
+                      value={`${telemetryInfo?.traceCount ?? 0} traces · ${telemetryInfo?.spanCount ?? 0} spans`}
+                    />
+                  </div>
                   <div className="flex items-center justify-between gap-4 p-5">
                     <div className="min-w-0">
                       <p className="font-medium">Clear telemetry data</p>
@@ -297,9 +329,9 @@ export function SettingsPage() {
               <section className="rounded-xl border border-subtle bg-card">
                 <div className="flex items-start justify-between gap-4 border-b border-subtle p-5">
                   <div>
-                    <h1 className="text-xl font-semibold">HALO engine</h1>
+                    <h2 className="text-lg font-medium">HALO Configuration</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      HALO clones the engine locally and runs it with uv.
+                      Engine install, runtime checks, and desktop app details.
                     </p>
                   </div>
                   <StatusBadge status={status?.status ?? "not_installed"} />
@@ -319,6 +351,19 @@ export function SettingsPage() {
                   <DefinitionRow label="Python" value={status?.checks.python ?? "missing"} />
                   <DefinitionRow label="uv" value={status?.checks.uv ?? "missing"} />
                   <DefinitionRow label="git" value={status?.checks.git ?? "missing"} />
+                  <DefinitionRow label="Version" value={metadata.version} />
+                  <DefinitionRow label="Channel" value={metadata.channel} />
+                  <DefinitionRow label="Bundle ID" value={metadata.bundleId} />
+                  <DefinitionRow
+                    copyable
+                    label="Release URL"
+                    value={metadata.releaseUrl}
+                  />
+                  <DefinitionRow
+                    copyable
+                    label="App data folder"
+                    value={metadata.appDataDir}
+                  />
                 </div>
                 {status?.lastError ? (
                   <div className="mx-5 mb-4 rounded-md border border-destructive-border bg-destructive/5 p-3 text-sm text-destructive">
@@ -343,193 +388,15 @@ export function SettingsPage() {
                   </Button>
                 </div>
               </section>
-
-              <section className="rounded-xl border border-subtle bg-card">
-                <div className="border-b border-subtle p-5">
-                  <h2 className="text-lg font-semibold">Model providers</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Keys are stored in the local SQLite database and masked in
-                    the UI.
-                  </p>
-                </div>
-                <div className="divide-y divide-subtle">
-                  {providers.length === 0 ? (
-                    <div className="p-5 text-sm text-muted-foreground">
-                      No providers saved yet.
-                    </div>
-                  ) : (
-                    providers.map((provider) => (
-                      <div
-                        className="flex items-center justify-between gap-4 p-5"
-                        key={provider.id}
-                      >
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="truncate font-medium">{provider.name}</p>
-                            <StatusBadge status={provider.lastStatus} />
-                          </div>
-                          <p className="mt-1 truncate text-xs text-muted-foreground">
-                            {provider.baseUrl} · {provider.model} ·{" "}
-                            {provider.apiKeyMasked}
-                          </p>
-                          {provider.lastError ? (
-                            <p className="mt-1 text-xs text-destructive">
-                              {provider.lastError}
-                            </p>
-                          ) : null}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <Button
-                            disabled={testProviderMutation.isPending}
-                            onClick={() => testProviderMutation.mutate({ id: provider.id })}
-                            size="sm"
-                            variant="outline"
-                          >
-                            Test
-                          </Button>
-                          <Button
-                            aria-label={`Delete provider ${provider.name}`}
-                            onClick={() =>
-                              setProviderPendingDelete({
-                                id: provider.id,
-                                name: provider.name,
-                              })
-                            }
-                            size="icon"
-                            variant="ghost"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-xl border border-subtle bg-card">
-                <div className="flex items-start gap-3 border-b border-subtle p-5">
-                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-subtle bg-background-muted">
-                    <FolderOpen className="h-4 w-4 text-detail-brand" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold">Desktop app</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Version and local paths for support and diagnostics.
-                    </p>
-                  </div>
-                </div>
-                <div className="divide-y divide-subtle px-5">
-                  <DefinitionRow label="Version" value={metadata.version} />
-                  <DefinitionRow label="Channel" value={metadata.channel} />
-                  <DefinitionRow label="Bundle ID" value={metadata.bundleId} />
-                  <DefinitionRow
-                    copyable
-                    label="Release URL"
-                    value={metadata.releaseUrl}
-                  />
-                  <DefinitionRow
-                    copyable
-                    label="App data folder"
-                    value={metadata.appDataDir}
-                  />
-                </div>
-              </section>
-            </div>
-
-            <section className="h-fit rounded-xl border border-subtle bg-card">
-              <div className="border-b border-subtle p-5">
-                <h2 className="text-lg font-semibold">Add provider</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  HALO expects an OpenAI-compatible endpoint.
-                </p>
-              </div>
-              <div className="space-y-4 p-5">
-                <FilterSelect
-                  label="Preset"
-                  onChange={(value) => {
-                    const next = value as typeof providerType;
-                    setProviderType(next);
-                    if (next === "openai") {
-                      setName("OpenAI");
-                      setBaseUrl("https://api.openai.com/v1");
-                      setModel("gpt-4.1-mini");
-                    } else if (next === "anthropic_compat") {
-                      setName("Anthropic compatible");
-                      setBaseUrl("https://api.anthropic.com/v1");
-                      setModel("claude-sonnet-4-20250514");
-                    } else {
-                      setName("Custom provider");
-                      setBaseUrl("");
-                      setModel("");
-                    }
-                  }}
-                  options={[
-                    { label: "OpenAI", value: "openai" },
-                    { label: "Anthropic compatible", value: "anthropic_compat" },
-                    { label: "Custom OpenAI-compatible", value: "custom" },
-                  ]}
-                  value={providerType}
-                />
-                <Input
-                  label="Name"
-                  onChange={(event) => setName(event.currentTarget.value)}
-                  placeholder="Provider name"
-                  value={name}
-                />
-                <Input
-                  hint="OpenAI-compatible /v1 endpoint."
-                  label="Base URL"
-                  onChange={(event) => setBaseUrl(event.currentTarget.value)}
-                  placeholder="https://api.openai.com/v1"
-                  value={baseUrl}
-                />
-                <Input
-                  label="Model"
-                  onChange={(event) => setModel(event.currentTarget.value)}
-                  placeholder="Model id"
-                  value={model}
-                />
-                <Input
-                  hint="Stored locally in SQLite. It never leaves this machine."
-                  label="API key"
-                  onChange={(event) => setApiKey(event.currentTarget.value)}
-                  placeholder="API key"
-                  type="password"
-                  value={apiKey}
-                />
-                <Button
-                  className="w-full"
-                  disabled={
-                    saveProviderMutation.isPending ||
-                    !name.trim() ||
-                    !baseUrl.trim() ||
-                    !model.trim() ||
-                    !apiKey.trim()
-                  }
-                  onClick={() =>
-                    saveProviderMutation.mutate({
-                      apiKey,
-                      baseUrl,
-                      model,
-                      name,
-                      providerType,
-                    })
-                  }
-                >
-                  {saveProviderMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="mr-2 h-4 w-4" />
-                  )}
-                  Save provider
-                </Button>
-              </div>
-            </section>
             </div>
           </div>
         </section>
       </div>
+
+      <ModelProviderDialog
+        onOpenChange={setProviderDialogOpen}
+        open={providerDialogOpen}
+      />
 
       <Dialog
         cancelTitle="Cancel"

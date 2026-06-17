@@ -122,10 +122,10 @@ function seedNonTelemetryData(
   sqlite
     .query(
       `INSERT INTO halo_model_providers (
-        id, name, provider_type, base_url, api_key, model, headers_json,
+        id, name, provider_type, base_url, api_key, headers_json,
         last_status, last_error, last_tested_at, created_at, updated_at
       ) VALUES ('provider-1', 'OpenAI', 'openai', 'https://api.openai.com/v1',
-        'sk-test', 'gpt-4.1-mini', '{}', 'ok', NULL, ?, ?, ?)`,
+        'sk-test', '{}', 'ok', NULL, ?, ?, ?)`,
     )
     .run(now, now, now);
   sqlite

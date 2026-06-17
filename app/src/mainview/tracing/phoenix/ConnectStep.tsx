@@ -48,8 +48,8 @@ export function ConnectStep({
           title="Phoenix connection"
         >
           <p className="text-sm text-muted-foreground">
-            Point HALO at a self-hosted Arize Phoenix instance. The API key is
-            only needed when the instance has authentication enabled.
+            Import data from Arize Phoenix. API Key is only needed when
+            authentication is enabled
           </p>
         </StatusPanel>
         <div className="grid gap-3">

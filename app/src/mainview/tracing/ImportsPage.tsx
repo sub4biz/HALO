@@ -196,7 +196,7 @@ export function ImportsPage() {
                   </Button>
                 }
                 className="w-full py-16"
-                description="Bring historical traces in from Langfuse or Phoenix and they'll show up here."
+                description="Import existing data from a provider, upload a file, or connect a live agent."
                 icon={DownloadCloud}
                 title="No imports yet"
               />

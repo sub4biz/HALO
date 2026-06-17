@@ -6,14 +6,12 @@ import {
   getTracesForSession,
   listSessions,
   listTraces,
+  searchSessions,
+  searchTraces,
 } from "../telemetry/storage";
 import type { Span, SpanDbRow, TelemetryFilters } from "../telemetry/types";
 import { LOCAL_TELEMETRY_AUTH } from "../telemetry/types";
 import type { HaloRunPreview, HaloRunTargetType } from "./types";
-
-const MAX_EXPORT_TRACES = 500;
-const MAX_EXPORT_SESSIONS = 200;
-const MAX_EXPORT_SPANS = 25_000;
 
 export type HaloTraceExport = HaloRunPreview & {
   path: string;
@@ -32,7 +30,7 @@ export function previewHaloRunExport(
     spanCount: selected.spanCount,
     targetType: input.targetType,
     traceCount: selected.traceIds.length,
-    warnings: selected.warnings,
+    warnings: [],
   };
 }
 
@@ -48,7 +46,7 @@ export function exportHaloTraceJsonl(
   const selected = selectTraceIds(sqlite, input);
   mkdirSync(input.outputDir, { recursive: true });
   const path = join(input.outputDir, "traces.jsonl");
-  const rows = getSpanRowsForTraces(sqlite, selected.traceIds, MAX_EXPORT_SPANS);
+  const rows = getSpanRowsForTraces(sqlite, selected.traceIds);
   const jsonl = rows.map((row) => JSON.stringify(spanRowToHaloSpan(row))).join("\n");
   writeFileSync(path, jsonl ? `${jsonl}\n` : "", "utf8");
   return {
@@ -57,7 +55,7 @@ export function exportHaloTraceJsonl(
     spanCount: rows.length,
     targetType: input.targetType,
     traceCount: selected.traceIds.length,
-    warnings: selected.warnings,
+    warnings: [],
   };
 }
 
@@ -68,56 +66,67 @@ function selectTraceIds(
     targetType: HaloRunTargetType;
   },
 ) {
-  const warnings: string[] = [];
+  const freeText = input.filters.freeText?.trim();
   if (input.targetType === "trace_group") {
-    const result = listTraces(sqlite, {
-      filters: input.filters,
-      limit: MAX_EXPORT_TRACES,
-      sortBy: "start_time",
-      sortOrder: "desc",
-    });
-    if (result.totalCount > result.traces.length) {
-      warnings.push(`Export capped at ${result.traces.length} of ${result.totalCount} traces.`);
-    }
+    const result = freeText
+      ? searchTraces(sqlite, {
+          filters: input.filters,
+          limit: Number.MAX_SAFE_INTEGER,
+          query: freeText,
+          sortBy: "start_time",
+          sortOrder: "desc",
+        })
+      : listTraces(sqlite, {
+          filters: input.filters,
+          limit: Number.MAX_SAFE_INTEGER,
+          sortBy: "start_time",
+          sortOrder: "desc",
+        });
+    const traces =
+      "results" in result ? result.results.map((item) => item.trace) : result.traces;
     return {
-      sessionCount: new Set(result.traces.map((trace) => trace.sessionId).filter(Boolean))
-        .size,
-      spanCount: result.traces.reduce((sum, trace) => sum + trace.spanCount, 0),
-      traceIds: result.traces.map((trace) => trace.traceId),
-      warnings,
+      sessionCount: new Set(traces.map((trace) => trace.sessionId).filter(Boolean)).size,
+      spanCount: traces.reduce((sum, trace) => sum + trace.spanCount, 0),
+      traceIds: traces.map((trace) => trace.traceId),
     };
   }
 
-  const sessions = listSessions(sqlite, {
-    filters: input.filters,
-    limit: MAX_EXPORT_SESSIONS,
-    sortBy: "last_activity",
-    sortOrder: "desc",
-  });
-  if (sessions.totalCount > sessions.sessions.length) {
-    warnings.push(
-      `Session export capped at ${sessions.sessions.length} of ${sessions.totalCount} sessions.`,
-    );
-  }
+  const sessionResult = freeText
+    ? searchSessions(sqlite, {
+        filters: input.filters,
+        limit: Number.MAX_SAFE_INTEGER,
+        query: freeText,
+        sortBy: "last_activity",
+        sortOrder: "desc",
+      })
+    : listSessions(sqlite, {
+        filters: input.filters,
+        limit: Number.MAX_SAFE_INTEGER,
+        sortBy: "last_activity",
+        sortOrder: "desc",
+      });
+  const sessions =
+    "results" in sessionResult
+      ? sessionResult.results.map((item) => item.session)
+      : sessionResult.sessions;
   const traceIds = new Set<string>();
   let spanCount = 0;
-  for (const session of sessions.sessions) {
+  for (const session of sessions) {
     spanCount += session.spanCount;
     const traces = getTracesForSession(sqlite, {
-      limit: MAX_EXPORT_TRACES,
+      limit: Number.MAX_SAFE_INTEGER,
       sessionId: session.sessionId,
     });
     for (const trace of traces.traces) traceIds.add(trace.traceId);
   }
   return {
-    sessionCount: sessions.sessions.length,
+    sessionCount: sessions.length,
     spanCount,
     traceIds: [...traceIds],
-    warnings,
   };
 }
 
-function getSpanRowsForTraces(sqlite: Database, traceIds: string[], limit: number) {
+function getSpanRowsForTraces(sqlite: Database, traceIds: string[]) {
   if (traceIds.length === 0) return [];
   const rows: SpanDbRow[] = [];
   for (const traceId of traceIds) {
@@ -131,7 +140,6 @@ function getSpanRowsForTraces(sqlite: Database, traceIds: string[], limit: numbe
       .all(LOCAL_TELEMETRY_AUTH.projectId, traceId)
       .map(rowToSpanDbRow);
     rows.push(...traceRows);
-    if (rows.length >= limit) return rows.slice(0, limit);
   }
   return rows;
 }

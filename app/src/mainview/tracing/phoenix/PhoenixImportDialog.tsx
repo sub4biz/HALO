@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { keepPreviousData } from "@tanstack/react-query";
-import { Ban, DownloadCloud, Loader2, Play, RotateCcw } from "lucide-react";
+import { Ban, Loader2, Play, RotateCcw } from "lucide-react";
 
 import {
   Button,
@@ -245,12 +245,7 @@ export function PhoenixImportDialog({
     <Dialog
       className="!w-[min(800px,92vw)] !max-w-[92vw] sm:!max-w-[800px] md:!w-[800px]"
       dialogDescription="Bring historical Arize Phoenix traces into the local HALO timeline."
-      dialogTitle={
-        <span className="flex items-center gap-2">
-          <DownloadCloud className="h-5 w-5 text-detail-brand" />
-          Import Data
-        </span>
-      }
+      dialogTitle="Import Data"
       maxWidth={800}
       footer={
         <div className="flex items-center justify-between gap-3 border-t border-subtle px-6 py-4">

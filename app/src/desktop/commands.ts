@@ -15,7 +15,7 @@ export function githubReleaseUrl(version: string) {
 }
 export const DEFAULT_INGEST_URL = "http://127.0.0.1:8799/v1/traces";
 
-export type WorkspaceRoute = "traces" | "analysis" | "settings" | "welcome";
+export type WorkspaceRoute = "data" | "analysis" | "settings" | "welcome";
 
 export type DesktopCommandName =
   | "about"
@@ -193,10 +193,10 @@ export type CommandPaletteItem = {
 export const commandPaletteItems: CommandPaletteItem[] = [
   {
     command: "navigate-traces",
-    description: "Open the trace monitor.",
+    description: "Open telemetry data.",
     group: "Navigation",
-    keywords: ["trace", "monitor", "spans"],
-    label: "Go to Traces",
+    keywords: ["data", "trace", "monitor", "spans"],
+    label: "Go to Data",
     shortcut: "⌘1",
   },
   {
@@ -312,9 +312,9 @@ export function routeForCommand(
 ): WorkspaceRoute | undefined {
   switch (command) {
     case "navigate-traces":
-      return "traces";
+      return "data";
     case "navigate-sessions":
-      return "traces";
+      return "data";
     case "navigate-analysis":
       return "analysis";
     case "navigate-settings":

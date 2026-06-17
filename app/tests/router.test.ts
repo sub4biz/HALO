@@ -27,6 +27,20 @@ afterEach(() => {
 });
 
 describe("telemetry router", () => {
+  test("requires an analysis model when starting a HALO run", async () => {
+    const input = {
+      filters: {},
+      maxDepth: 1,
+      maxParallel: 2,
+      maxTurns: 8,
+      prompt: "Analyze traces.",
+      providerId: "provider-1",
+      targetType: "trace_group",
+    } as unknown as Parameters<typeof caller.halo.runs.start>[0];
+
+    await expect(caller.halo.runs.start(input)).rejects.toThrow();
+  });
+
   test("queries ingested traces, spans, search, and facets", async () => {
     const payload = makeTracePayload();
     payload.resourceSpans?.[0]?.scopeSpans?.[0]?.spans?.[0]?.attributes?.push({

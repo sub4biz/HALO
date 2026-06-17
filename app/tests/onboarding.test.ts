@@ -55,7 +55,6 @@ describe("onboarding state", () => {
     saveHaloProvider(sqlite, {
       apiKey: "sk-test",
       baseUrl: "https://api.openai.com/v1",
-      model: "gpt-4.1-mini",
       name: "OpenAI",
       providerType: "openai",
     });

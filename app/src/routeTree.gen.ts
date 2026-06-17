@@ -14,6 +14,7 @@ import { Route as TracesRouteImport } from './routes/traces'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ImportsRouteImport } from './routes/imports'
 import { Route as ImportDataRouteImport } from './routes/import-data'
+import { Route as DataRouteImport } from './routes/data'
 import { Route as ComponentsRouteImport } from './routes/components'
 import { Route as AnalysisRouteImport } from './routes/analysis'
 import { Route as IndexRouteImport } from './routes/index'
@@ -47,6 +48,11 @@ const ImportsRoute = ImportsRouteImport.update({
 const ImportDataRoute = ImportDataRouteImport.update({
   id: '/import-data',
   path: '/import-data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DataRoute = DataRouteImport.update({
+  id: '/data',
+  path: '/data',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ComponentsRoute = ComponentsRouteImport.update({
@@ -99,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analysis': typeof AnalysisRoute
   '/components': typeof ComponentsRouteWithChildren
+  '/data': typeof DataRoute
   '/import-data': typeof ImportDataRoute
   '/imports': typeof ImportsRoute
   '/settings': typeof SettingsRoute
@@ -115,6 +122,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analysis': typeof AnalysisRoute
   '/components': typeof ComponentsRouteWithChildren
+  '/data': typeof DataRoute
   '/import-data': typeof ImportDataRoute
   '/imports': typeof ImportsRoute
   '/settings': typeof SettingsRoute
@@ -132,6 +140,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analysis': typeof AnalysisRoute
   '/components': typeof ComponentsRouteWithChildren
+  '/data': typeof DataRoute
   '/import-data': typeof ImportDataRoute
   '/imports': typeof ImportsRoute
   '/settings': typeof SettingsRoute
@@ -150,6 +159,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analysis'
     | '/components'
+    | '/data'
     | '/import-data'
     | '/imports'
     | '/settings'
@@ -166,6 +176,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analysis'
     | '/components'
+    | '/data'
     | '/import-data'
     | '/imports'
     | '/settings'
@@ -182,6 +193,7 @@ export interface FileRouteTypes {
     | '/'
     | '/analysis'
     | '/components'
+    | '/data'
     | '/import-data'
     | '/imports'
     | '/settings'
@@ -199,6 +211,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalysisRoute: typeof AnalysisRoute
   ComponentsRoute: typeof ComponentsRouteWithChildren
+  DataRoute: typeof DataRoute
   ImportDataRoute: typeof ImportDataRoute
   ImportsRoute: typeof ImportsRoute
   SettingsRoute: typeof SettingsRoute
@@ -242,6 +255,13 @@ declare module '@tanstack/react-router' {
       path: '/import-data'
       fullPath: '/import-data'
       preLoaderRoute: typeof ImportDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/data': {
+      id: '/data'
+      path: '/data'
+      fullPath: '/data'
+      preLoaderRoute: typeof DataRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/components': {
@@ -334,6 +354,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalysisRoute: AnalysisRoute,
   ComponentsRoute: ComponentsRouteWithChildren,
+  DataRoute: DataRoute,
   ImportDataRoute: ImportDataRoute,
   ImportsRoute: ImportsRoute,
   SettingsRoute: SettingsRoute,

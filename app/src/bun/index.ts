@@ -82,7 +82,7 @@ const desktopRpc = BrowserView.defineRPC<HaloDesktopRPCSchema>({
       openExternal: ({ url }) => ({ ok: Utils.openExternal(url) }),
       pickImportFile: async () => {
         const paths = await Utils.openFileDialog({
-          allowedFileTypes: "jsonl,json",
+          allowedFileTypes: "jsonl,json,gz",
           allowsMultipleSelection: false,
           canChooseDirectory: false,
           canChooseFiles: true,
@@ -117,8 +117,8 @@ const desktopRpc = BrowserView.defineRPC<HaloDesktopRPCSchema>({
               message: `${label} link copied`,
               value:
                 input.kind === "trace"
-                  ? `#/traces?traceId=${encodeURIComponent(input.id)}`
-                  : `#/traces?view=sessions&sessionId=${encodeURIComponent(input.id)}`,
+                  ? `#/data?traceId=${encodeURIComponent(input.id)}`
+                  : `#/data?view=sessions&sessionId=${encodeURIComponent(input.id)}`,
             },
           },
           ...(input.sourceUrl
