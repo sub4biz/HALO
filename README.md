@@ -30,15 +30,14 @@
 </p>
 
 <p align="center">
+  <a href="#halo-desktop">Quickstart</a> •
   <a href="#what-is-this">What is this?</a> •
-  <a href="#install">Install</a> •
-  <a href="#why-an-rlm">Why RLM?</a> •
   <a href="#benchmarks">Benchmarks</a> •
   <a href="#development">Development</a> •
   <a href="#contributing">Contributing</a>
 </p>
 
-<table>
+<!-- <table>
   <tr>
     <td width="50%">
       <img src="https://github.com/context-labs/HALO/blob/main/assets/import-traces-new.png" alt="Import agent traces">
@@ -103,29 +102,32 @@
       Connect existing observability tools or upload trace exports.
     </td>
   </tr>
-</table>
+</table> -->
 
-## What is this?
 
-Note: If you're looking for a hosted, plug-and-play version of HALO, please sign up for [inference.net](https://inference.net).
-
-HALO (Hierarchical Agent Loop Optimization) is a methodology for building recursively self-improving agent harnesses using [RLMs](https://github.com/alexzhang13/rlm). This repository contains:
-
-- Information on HALO methodology.
-- A Python package that implements the core HALO-RLM engine. [View on PyPI](https://pypi.org/project/halo-engine/)
-- A demo project that shows how to build HALO loops for your agents using the Python package. [View demo](/demo/openai-agents-sdk-demo/)
-- A local desktop app for collecting traces and running local HALO analysis. [View app](app/)
-- Benchmarking examples applying HALO to popular agent benchmarks. (View [AppWorld](#appworld)).
-
-## Desktop App
-
+## Quickstart
 Install the HALO desktop app with:
 
 ```bash
 curl -fsSL https://inference.net/halo/install.sh | sh
 ```
+<img src="./assets/view-halo-report.png" alt="Read HALO reports">
 
 The installer downloads the latest release for your platform and sets up the desktop app. macOS uses a signed, notarized DMG. You can also install directly from the [GitHub releases page](https://github.com/context-labs/halo/releases).
+
+
+## What is this?
+
+Note: If you're looking for a hosted, plug-and-play version of HALO, please sign up for [inference.net](https://inference.net).
+
+HALO is a methodology for building recursively self-improving agent harnesses using [RLMs](https://github.com/alexzhang13/rlm). This repository contains:
+
+- The [HALO Desktop App](https://inference.net/products/halo/) for running HALO locally on your machine.
+- Information on HALO methodology.
+- A Python package that implements the core HALO-RLM engine. [View on PyPI](https://pypi.org/project/halo-engine/)
+- A demo project that shows how to build HALO loops for your agents using the Python package. [View demo](/demo/openai-agents-sdk-demo/)
+- Benchmarking examples applying HALO to popular agent benchmarks. (View [AppWorld](#appworld)).
+
 
 ## HALO Loop
 
