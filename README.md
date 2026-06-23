@@ -8,13 +8,13 @@
 
 <h1 align="center">
   <br>
-  <a href="https://github.com/context-labs/uwu"><img src="https://em-content.zobj.net/thumbs/240/apple/354/smiling-face-with-halo_1f607.png" alt="😇" width="150" style="border-radius:8px;"></a>
+  <a href="https://github.com/context-labs/halo"><img src="./assets/halo-icon.png" alt="😇" width="150" style="border-radius:16px;"></a>
    <br>
   HALO
   <br>
 </h1>
 
-<h4 align="center">✨ RLM-based Automatic Agent Optimization Loop ✨</h4>
+<h4 align="center">✨ RLM-based agent optimizer using production traces✨</h4>
 
 <p align="center">
   <a href="https://x.com/inference_net">
