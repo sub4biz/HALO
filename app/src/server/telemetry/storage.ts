@@ -1099,12 +1099,12 @@ export function listSessions(
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
   const rows = sqlite
     .query<Record<string, unknown>, QueryParams>(
-      `${sessionAggregateSql(where)}
-       SELECT *
-       FROM session_rows
-       ${cursorSql}
-       ORDER BY ${sortColumn} ${order}, session_id ${order}
-       LIMIT :limitPlusOne`,
+      pagedSessionAggregateSql({
+        cursorSql,
+        order,
+        sortColumn,
+        where,
+      }),
     )
     .all({ ...params, limitPlusOne: limit + 1 });
   const count = sqlite
@@ -1665,6 +1665,113 @@ function sessionAggregateSql(where: string): string {
     ${where}
     GROUP BY project_id, session_id
   )`;
+}
+
+function pagedSessionAggregateSql({
+  cursorSql,
+  order,
+  sortColumn,
+  where,
+}: {
+  cursorSql: string;
+  order: "ASC" | "DESC";
+  sortColumn: string;
+  where: string;
+}): string {
+  return `WITH base_session_rows AS (
+    SELECT
+      project_id,
+      session_id,
+      min(start_time) AS start_time,
+      max(end_time) AS end_time,
+      max(end_time) - min(start_time) AS duration_ms,
+      CAST(round((max(end_time) - min(start_time)) * 1000000) AS TEXT) AS duration_ns,
+      count(*) AS trace_count,
+      sum(span_count) AS span_count,
+      sum(llm_span_count) AS llm_span_count,
+      sum(total_tokens) AS total_tokens,
+      sum(cache_read_tokens) AS cache_read_tokens,
+      sum(total_cost) AS total_cost,
+      max(has_error) AS has_error,
+      group_concat(DISTINCT NULLIF(service_name, '')) AS service_names,
+      group_concat(DISTINCT NULLIF(agent_name, '')) AS agent_names,
+      group_concat(DISTINCT NULLIF(source, '')) AS sources,
+      group_concat(DISTINCT NULLIF(source_connection_name, '')) AS source_connection_names
+    FROM trace_summaries
+    ${where}
+    GROUP BY project_id, session_id
+  ),
+  page_session_rows AS (
+    SELECT *
+    FROM base_session_rows
+    ${cursorSql}
+    ORDER BY ${sortColumn} ${order}, session_id ${order}
+    LIMIT :limitPlusOne
+  ),
+  page_trace_ids AS (
+    SELECT ts.project_id, ts.session_id, ts.trace_id
+    FROM trace_summaries ts
+    JOIN page_session_rows page
+      ON page.project_id = ts.project_id
+      AND page.session_id = ts.session_id
+  ),
+  page_models AS (
+    SELECT
+      page_trace_ids.project_id,
+      page_trace_ids.session_id,
+      group_concat(DISTINCT NULLIF(spans.llm_model_name, '')) AS llm_model_names
+    FROM page_trace_ids
+    JOIN spans
+      ON spans.project_id = page_trace_ids.project_id
+      AND spans.trace_id = page_trace_ids.trace_id
+    WHERE spans.llm_model_name IS NOT NULL
+      AND spans.llm_model_name != ''
+    GROUP BY page_trace_ids.project_id, page_trace_ids.session_id
+  )
+  SELECT
+    page.*,
+    (
+      SELECT latest.trace_id
+      FROM trace_summaries latest
+      WHERE latest.project_id = page.project_id
+        AND latest.session_id = page.session_id
+      ORDER BY latest.start_time DESC, latest.trace_id DESC
+      LIMIT 1
+    ) AS latest_trace_id,
+    (
+      SELECT latest.root_span_name
+      FROM trace_summaries latest
+      WHERE latest.project_id = page.project_id
+        AND latest.session_id = page.session_id
+      ORDER BY latest.start_time DESC, latest.trace_id DESC
+      LIMIT 1
+    ) AS latest_trace_name,
+    page_models.llm_model_names,
+    (
+      SELECT first_turn.input_preview
+      FROM trace_summaries first_turn
+      WHERE first_turn.project_id = page.project_id
+        AND first_turn.session_id = page.session_id
+        AND first_turn.input_preview IS NOT NULL
+        AND first_turn.input_preview != ''
+      ORDER BY first_turn.start_time ASC, first_turn.trace_id ASC
+      LIMIT 1
+    ) AS input_preview,
+    (
+      SELECT last_turn.output_preview
+      FROM trace_summaries last_turn
+      WHERE last_turn.project_id = page.project_id
+        AND last_turn.session_id = page.session_id
+        AND last_turn.output_preview IS NOT NULL
+        AND last_turn.output_preview != ''
+      ORDER BY last_turn.start_time DESC, last_turn.trace_id DESC
+      LIMIT 1
+    ) AS output_preview
+  FROM page_session_rows page
+  LEFT JOIN page_models
+    ON page_models.project_id = page.project_id
+    AND page_models.session_id = page.session_id
+  ORDER BY page.${sortColumn} ${order}, page.session_id ${order}`;
 }
 
 function buildSessionWhere(filters?: TelemetryFilters) {

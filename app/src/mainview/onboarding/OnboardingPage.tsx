@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 
@@ -13,13 +13,14 @@ import { FileImportDialog } from "~/tracing/fileimport/FileImportDialog";
 import { LangfuseImportDialog } from "~/tracing/langfuse/LangfuseImportDialog";
 import { PhoenixImportDialog } from "~/tracing/phoenix/PhoenixImportDialog";
 
-type OnboardingStep = "welcome" | "video" | "import";
+type OnboardingStep = "welcome" | "import";
 
 const DEFAULT_INGEST_URL = "http://127.0.0.1:8799/v1/traces";
+const HALO_CHAT_TEXT_CLASS_NAME =
+  "text-[0.9375rem] leading-[1.95] tracking-[-0.011em] text-foreground/85 antialiased [text-wrap:pretty]";
 
 const STEPS: Array<{ id: OnboardingStep; label: string }> = [
   { id: "welcome", label: "Welcome" },
-  { id: "video", label: "Video" },
   { id: "import", label: "Import" },
 ];
 
@@ -56,24 +57,14 @@ export function OnboardingPage() {
   return (
     <main className="min-h-screen overflow-auto bg-background text-foreground">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-8 py-10">
-        <header className="flex items-center justify-between">
+        <header className="flex items-center">
           <StepRail onStepChange={setStep} step={step} />
-          <Button
-            onClick={() => void finish()}
-            size="sm"
-            variant="secondary"
-          >
-            Skip Onboarding
-          </Button>
         </header>
 
         <div className="flex flex-1 flex-col pt-20 pb-10">
           {step === "welcome" ? <WelcomeStep onContinue={goNext} /> : null}
-          {step === "video" ? (
-            <VideoStep onBack={() => setStep("welcome")} onContinue={goNext} />
-          ) : null}
           {step === "import" ? (
-            <ImportStep onBack={() => setStep("video")} onFinish={() => void finish()} />
+            <ImportStep onBack={() => setStep("welcome")} onFinish={finish} />
           ) : null}
         </div>
       </div>
@@ -84,54 +75,39 @@ export function OnboardingPage() {
 function WelcomeStep({ onContinue }: { onContinue: () => void }) {
   return (
     <OnboardingStepLayout
-      description="HALO helps you understand what your AI agents are doing by collecting traces, sessions, and telemetry in one local workspace."
       primaryAction={
         <Button onClick={onContinue} size="sm" variant="secondary">
-          Next
+          Get Started
           <ArrowRight className="ml-2 h-3.5 w-3.5" />
         </Button>
       }
       title="Welcome to HALO"
     >
-      <div className="max-w-2xl space-y-4 text-base leading-7 text-muted-foreground">
-        <p>
-          Watch the short walkthrough, then bring in your first traces when you
-          are ready.
+      <div className="max-w-2xl space-y-4">
+        <p className={HALO_CHAT_TEXT_CLASS_NAME}>
+          Point HALO at OpenTelemetry-compatible traces from your agent runs. It
+          reads across executions, looks for repeated harness-level failure modes,
+          and writes up the issues that are worth fixing.
         </p>
-      </div>
-    </OnboardingStepLayout>
-  );
-}
-
-function VideoStep({
-  onBack,
-  onContinue,
-}: {
-  onBack: () => void;
-  onContinue: () => void;
-}) {
-  return (
-    <OnboardingStepLayout
-      description="Learn how to inspect agent traces, follow sessions, and bring data into HALO."
-      onBack={onBack}
-      primaryAction={
-        <Button onClick={onContinue} size="sm" variant="secondary">
-          Next
-          <ArrowRight className="ml-2 h-3.5 w-3.5" />
-        </Button>
-      }
-      title="Watch the HALO walkthrough"
-    >
-      <div className="overflow-hidden rounded-xl border border-border/70 bg-card">
-        <div className="relative aspect-video w-full">
-          <iframe
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            className="absolute inset-0 h-full w-full"
-            src="https://www.youtube.com/embed/SGKrnYSttBI"
-            title="How to use HALO"
-          />
-        </div>
+        <p className={HALO_CHAT_TEXT_CLASS_NAME}>
+          The method is a loop: collect traces, run HALO, use the report
+          as input to a coding agent, ship the harness changes, then collect more
+          traces and do it again.
+        </p>
+        <p className={HALO_CHAT_TEXT_CLASS_NAME}>
+          For the best results in a production environment, it is best to run a
+          HALO loop every 24 hours to review the previous day&apos;s executions. For a
+          hosted version of HALO, please see{" "}
+          <a
+            className="text-link underline-offset-2 hover:underline"
+            href="https://inference.net"
+            rel="noreferrer"
+            target="_blank"
+          >
+            inference.net
+          </a>
+          .
+        </p>
       </div>
     </OnboardingStepLayout>
   );
@@ -142,13 +118,14 @@ function ImportStep({
   onFinish,
 }: {
   onBack: () => void;
-  onFinish: () => void;
+  onFinish: () => Promise<void>;
 }) {
   const [langfuseDialogOpen, setLangfuseDialogOpen] = useState(false);
   const [phoenixDialogOpen, setPhoenixDialogOpen] = useState(false);
   const [fileDialogOpen, setFileDialogOpen] = useState(false);
   const [demoDialogOpen, setDemoDialogOpen] = useState(false);
   const [localAgentSetupOpen, setLocalAgentSetupOpen] = useState(false);
+  const completedImportRef = useRef(false);
   const utils = trpc.useUtils();
   const infoQuery = trpc.telemetry.info.useQuery();
 
@@ -167,6 +144,16 @@ function ImportStep({
   const handleReadDocumentation = useCallback(() => {
     void openExternalUrl(APP_DOCS_URL);
   }, []);
+  const handleImported = useCallback(async () => {
+    if (completedImportRef.current) return;
+    completedImportRef.current = true;
+    setLangfuseDialogOpen(false);
+    setPhoenixDialogOpen(false);
+    setFileDialogOpen(false);
+    setDemoDialogOpen(false);
+    refreshTelemetry();
+    await onFinish();
+  }, [onFinish, refreshTelemetry]);
 
   trpc.live.workspace.useSubscription(undefined, {
     onData() {
@@ -179,7 +166,7 @@ function ImportStep({
       description="Import existing data from a provider, upload a file, or connect a live agent."
       onBack={onBack}
       primaryAction={
-        <Button onClick={onFinish} size="sm" variant="secondary">
+        <Button onClick={() => void onFinish()} size="sm" variant="secondary">
           Dashboard
           <ArrowRight className="ml-2 h-3.5 w-3.5" />
         </Button>
@@ -198,22 +185,22 @@ function ImportStep({
       />
 
       <LangfuseImportDialog
-        onImported={refreshTelemetry}
+        onImported={() => void handleImported()}
         onOpenChange={setLangfuseDialogOpen}
         open={langfuseDialogOpen}
       />
       <PhoenixImportDialog
-        onImported={refreshTelemetry}
+        onImported={() => void handleImported()}
         onOpenChange={setPhoenixDialogOpen}
         open={phoenixDialogOpen}
       />
       <FileImportDialog
-        onImported={refreshTelemetry}
+        onImported={() => void handleImported()}
         onOpenChange={setFileDialogOpen}
         open={fileDialogOpen}
       />
       <DemoTracesImportDialog
-        onImported={refreshTelemetry}
+        onImported={() => void handleImported()}
         onOpenChange={setDemoDialogOpen}
         open={demoDialogOpen}
       />
@@ -235,7 +222,7 @@ function OnboardingStepLayout({
   title,
 }: {
   children: ReactNode;
-  description: string;
+  description?: string;
   onBack?: () => void;
   primaryAction: ReactNode;
   title: string;
@@ -244,9 +231,11 @@ function OnboardingStepLayout({
     <section className="flex min-h-0 w-full flex-1 flex-col">
       <div className="mb-8">
         <h1 className="text-3xl font-medium tracking-normal">{title}</h1>
-        <p className="mt-3 max-w-2xl text-base text-muted-foreground">
-          {description}
-        </p>
+        {description ? (
+          <p className="mt-3 max-w-2xl text-base text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
       </div>
 
       <div>{children}</div>

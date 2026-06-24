@@ -265,20 +265,11 @@ export function FileImportDialog({
                   Cancel import
                 </Button>
               ) : (
-                <>
-                  <Button onClick={() => onOpenChange(false)} variant="ghost">
-                    Close
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setActiveJobId(null);
-                      setStep("choose");
-                    }}
-                    variant={jobFailed ? "secondary" : "default"}
-                  >
-                    Start another import
-                  </Button>
-                  {jobFailed && latestJob ? (
+                jobFailed && latestJob ? (
+                  <>
+                    <Button onClick={() => onOpenChange(false)} variant="ghost">
+                      Close
+                    </Button>
                     <Button
                       disabled={startImport.isPending}
                       onClick={() =>
@@ -288,8 +279,10 @@ export function FileImportDialog({
                       <RotateCcw className="mr-2 h-4 w-4" />
                       Retry import
                     </Button>
-                  ) : null}
-                </>
+                  </>
+                ) : (
+                  <Button onClick={() => onOpenChange(false)}>Close</Button>
+                )
               )
             ) : null}
           </div>

@@ -7,7 +7,6 @@ import {
   DownloadCloud,
   ExternalLink,
   Loader2,
-  Play,
   RotateCcw,
   XCircle,
 } from "lucide-react";
@@ -166,8 +165,7 @@ export function DemoTracesImportDialog({
                   Close
                 </Button>
                 <Button disabled={loadDemo.isPending} onClick={beginImport}>
-                  <Play className="mr-2 h-4 w-4" />
-                  Load demo traces
+                  Load Traces
                 </Button>
               </>
             ) : null}
@@ -189,23 +187,22 @@ export function DemoTracesImportDialog({
                   Cancel import
                 </Button>
               ) : (
-                <>
-                  <Button onClick={() => onOpenChange(false)} variant="ghost">
-                    Close
-                  </Button>
-                  <Button
-                    disabled={loadDemo.isPending}
-                    onClick={beginImport}
-                    variant={jobFailed ? "default" : "secondary"}
-                  >
-                    {jobFailed ? (
+                jobFailed ? (
+                  <>
+                    <Button onClick={() => onOpenChange(false)} variant="ghost">
+                      Close
+                    </Button>
+                    <Button
+                      disabled={loadDemo.isPending}
+                      onClick={beginImport}
+                    >
                       <RotateCcw className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Database className="mr-2 h-4 w-4" />
-                    )}
-                    {jobFailed ? "Retry demo import" : "Load again"}
-                  </Button>
-                </>
+                      Retry demo import
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={() => onOpenChange(false)}>Close</Button>
+                )
               )
             ) : null}
           </div>
