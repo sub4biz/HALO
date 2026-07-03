@@ -73,6 +73,7 @@ class AgentContext:
             rendered = render_root_system_prompt(
                 maximum_depth=engine_config.maximum_depth,
                 maximum_parallel_subagents=engine_config.maximum_parallel_subagents,
+                dataset_context=engine_config.dataset_context,
                 code_repo=code_repo,
                 git_repo=git_repo,
             )

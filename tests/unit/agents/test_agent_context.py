@@ -200,6 +200,7 @@ def _expected_system(cfg: EngineConfig) -> str:
     return render_root_system_prompt(
         maximum_depth=cfg.maximum_depth,
         maximum_parallel_subagents=cfg.maximum_parallel_subagents,
+        dataset_context=cfg.dataset_context,
         code_repo=None,
         git_repo=None,
     )

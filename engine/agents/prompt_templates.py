@@ -88,7 +88,7 @@ Output rules:
 
 Instructions:
 {system_prompt}
-{code_repo_section}{git_repo_section}"""
+{dataset_context_section}{code_repo_section}{git_repo_section}"""
 
 SUBAGENT_SYSTEM_PROMPT_TEMPLATE = """\
 You are a HALO subagent at depth={depth} of maximum_depth={maximum_depth}. You answer a
@@ -103,7 +103,13 @@ sentinel is reserved for the root agent.
 
 Instructions:
 {system_prompt}
-{code_repo_section}{git_repo_section}"""
+{dataset_context_section}{code_repo_section}{git_repo_section}"""
+
+DATASET_CONTEXT_PROMPT_SECTION_TEMPLATE = """\
+
+Dataset context (caller-supplied description of what this dataset encodes):
+{dataset_context}
+"""
 
 CODE_REPO_PROMPT_SECTION_TEMPLATE = """\
 
@@ -161,6 +167,13 @@ patterns, model names, and token counts when available.
 """
 
 
+def _render_dataset_context_section(dataset_context: str | None) -> str:
+    """Render the caller-supplied dataset-context section, or empty string when unset."""
+    if dataset_context is None:
+        return ""
+    return DATASET_CONTEXT_PROMPT_SECTION_TEMPLATE.format(dataset_context=dataset_context)
+
+
 def _render_code_repo_section(code_repo: "CodeRepo | None") -> str:
     """Render the code-repository prompt section, or empty string when no repo is configured.
 
@@ -188,19 +201,22 @@ def render_root_system_prompt(
     *,
     maximum_depth: int,
     maximum_parallel_subagents: int,
+    dataset_context: str | None,
     code_repo: "CodeRepo | None",
     git_repo: "GitRepo | None",
 ) -> str:
     """Build the root agent's system prompt: depth/parallelism caps + ``<final/>`` contract.
 
-    Includes the code-repository section (guidance, not the tree itself) when
-    ``code_repo`` is set, and the git-history section when ``git_repo`` is set;
-    each renders empty otherwise.
+    Includes the caller-supplied dataset-context section when
+    ``dataset_context`` is set, the code-repository section (guidance, not
+    the tree itself) when ``code_repo`` is set, and the git-history section
+    when ``git_repo`` is set; each renders empty otherwise.
     """
     return ROOT_SYSTEM_PROMPT_TEMPLATE.format(
         system_prompt=SYSTEM_PROMPT,
         maximum_depth=maximum_depth,
         maximum_parallel_subagents=maximum_parallel_subagents,
+        dataset_context_section=_render_dataset_context_section(dataset_context),
         code_repo_section=_render_code_repo_section(code_repo),
         git_repo_section=_render_git_repo_section(git_repo),
     )
@@ -211,20 +227,23 @@ def render_subagent_system_prompt(
     depth: int,
     maximum_depth: int,
     maximum_parallel_subagents: int,
+    dataset_context: str | None,
     code_repo: "CodeRepo | None",
     git_repo: "GitRepo | None",
 ) -> str:
     """Build a subagent's system prompt at a specific depth; ``<final/>`` is reserved for root.
 
-    Includes the code-repository section (guidance, not the tree itself) when
-    ``code_repo`` is set, and the git-history section when ``git_repo`` is set;
-    each renders empty otherwise.
+    Includes the caller-supplied dataset-context section when
+    ``dataset_context`` is set, the code-repository section (guidance, not
+    the tree itself) when ``code_repo`` is set, and the git-history section
+    when ``git_repo`` is set; each renders empty otherwise.
     """
     return SUBAGENT_SYSTEM_PROMPT_TEMPLATE.format(
         system_prompt=SYSTEM_PROMPT,
         depth=depth,
         maximum_depth=maximum_depth,
         maximum_parallel_subagents=maximum_parallel_subagents,
+        dataset_context_section=_render_dataset_context_section(dataset_context),
         code_repo_section=_render_code_repo_section(code_repo),
         git_repo_section=_render_git_repo_section(git_repo),
     )

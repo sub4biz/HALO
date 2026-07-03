@@ -201,6 +201,7 @@ def _build_subagent_as_tool(
         depth=child_depth,
         maximum_depth=engine_config.maximum_depth,
         maximum_parallel_subagents=engine_config.maximum_parallel_subagents,
+        dataset_context=engine_config.dataset_context,
         code_repo=run_state.code_repo,
         git_repo=run_state.git_repo,
     )

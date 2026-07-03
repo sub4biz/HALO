@@ -29,6 +29,13 @@ class EngineConfig(BaseModel):
     reference findings with the implementation and cite ``file:line``. ``None``
     means the feature is off — the code tools are never registered. The path is
     validated at run start (like ``trace_path``), not at config-parse time.
+
+    ``dataset_context`` is a caller-supplied description of the dataset's
+    shape and semantics, appended to both the root and subagent system
+    prompts as a "Dataset context" section. It lets callers whose JSONL
+    encodes a domain-specific corpus (e.g. one span per API request/response
+    pair) explain the encoding and where the interesting attributes live,
+    without forking the engine's prompts. ``None`` omits the section.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -43,4 +50,5 @@ class EngineConfig(BaseModel):
     tool_call_compaction_keep_last_turns: int = Field(default=3, ge=0)
     maximum_depth: int = Field(default=2, ge=0)
     maximum_parallel_subagents: int = Field(default=4, gt=0)
+    dataset_context: str | None = None
     repo_path: Path | None = None

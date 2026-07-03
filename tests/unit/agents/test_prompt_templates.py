@@ -5,6 +5,7 @@ from pathlib import Path
 from engine.agents.prompt_templates import (
     CODE_REPO_PROMPT_SECTION_TEMPLATE,
     COMPACTION_SYSTEM_PROMPT,
+    DATASET_CONTEXT_PROMPT_SECTION_TEMPLATE,
     FINAL_SENTINEL,
     GIT_REPO_PROMPT_SECTION_TEMPLATE,
     SYNTHESIS_SYSTEM_PROMPT,
@@ -37,6 +38,7 @@ def test_root_prompt_includes_sentinel_system_prompt_and_caps() -> None:
     text = render_root_system_prompt(
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=None,
         git_repo=None,
     )
@@ -50,6 +52,7 @@ def test_root_prompt_omits_code_section_without_repo() -> None:
     text = render_root_system_prompt(
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=None,
         git_repo=None,
     )
@@ -61,6 +64,7 @@ def test_root_prompt_includes_code_section_with_repo(tmp_path: Path) -> None:
     text = render_root_system_prompt(
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=repo,
         git_repo=None,
     )
@@ -71,6 +75,7 @@ def test_root_prompt_omits_git_section_without_repo() -> None:
     text = render_root_system_prompt(
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=None,
         git_repo=None,
     )
@@ -82,6 +87,7 @@ def test_root_prompt_includes_git_section_with_repo(tmp_path: Path) -> None:
     text = render_root_system_prompt(
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=None,
         git_repo=repo,
     )
@@ -93,6 +99,7 @@ def test_subagent_prompt_reports_depth_caps_and_system_prompt() -> None:
         depth=1,
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=None,
         git_repo=None,
     )
@@ -111,6 +118,7 @@ def test_subagent_prompt_includes_code_section_with_repo(tmp_path: Path) -> None
         depth=1,
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=repo,
         git_repo=None,
     )
@@ -123,6 +131,7 @@ def test_subagent_prompt_includes_git_section_with_repo(tmp_path: Path) -> None:
         depth=1,
         maximum_depth=2,
         maximum_parallel_subagents=4,
+        dataset_context=None,
         code_repo=None,
         git_repo=repo,
     )
@@ -132,3 +141,43 @@ def test_subagent_prompt_includes_git_section_with_repo(tmp_path: Path) -> None:
 def test_compaction_and_synthesis_prompts_are_strings() -> None:
     assert isinstance(COMPACTION_SYSTEM_PROMPT, str) and COMPACTION_SYSTEM_PROMPT
     assert isinstance(SYNTHESIS_SYSTEM_PROMPT, str) and SYNTHESIS_SYSTEM_PROMPT
+
+
+def test_root_prompt_omits_dataset_context_when_unset() -> None:
+    text = render_root_system_prompt(
+        maximum_depth=2,
+        maximum_parallel_subagents=4,
+        dataset_context=None,
+        code_repo=None,
+        git_repo=None,
+    )
+    assert "Dataset context" not in text
+
+
+def test_root_prompt_includes_dataset_context_section() -> None:
+    context = "Each trace is one API request/response pair; payloads live in `input.value`."
+    text = render_root_system_prompt(
+        maximum_depth=2,
+        maximum_parallel_subagents=4,
+        dataset_context=context,
+        code_repo=None,
+        git_repo=None,
+    )
+    assert DATASET_CONTEXT_PROMPT_SECTION_TEMPLATE.format(dataset_context=context) in text
+    assert SYSTEM_PROMPT in text
+    assert FINAL_SENTINEL in text
+
+
+def test_subagent_prompt_includes_dataset_context_section() -> None:
+    context = "Each trace is one API request/response pair."
+    text = render_subagent_system_prompt(
+        depth=1,
+        maximum_depth=2,
+        maximum_parallel_subagents=4,
+        dataset_context=context,
+        code_repo=None,
+        git_repo=None,
+    )
+    assert DATASET_CONTEXT_PROMPT_SECTION_TEMPLATE.format(dataset_context=context) in text
+    assert SYSTEM_PROMPT in text
+    assert "depth=1" in text
