@@ -115,6 +115,8 @@ curl -fsSL https://inference.net/halo/install.sh | sh
 
 The installer downloads the latest release for your platform and sets up the desktop app. macOS uses a signed, notarized DMG. You can also install directly from the GitHub [releases](https://github.com/context-labs/halo/releases) page. 
 
+For a full walkthrough of the desktop app, from loading demo traces to running HALO and shipping fixes with a coding agent, see the [HALO Desktop guide](https://docs.inference.net/guides/halo-desktop-app).
+
 If you're looking for a hosted, plug-and-play version of HALO, please sign up for [inference.net](https://inference.net?utm_source=halo-github&utm_medium=readme&utm_id=halo) and follow the instructions [here](https://docs.inference.net/get-started/capture-first-trace).
 
 
