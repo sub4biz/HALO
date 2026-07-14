@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 import httpx
+from agents import ModelBehaviorError
 from openai import (
     APIConnectionError,
     APIError,
@@ -54,7 +55,16 @@ def is_retriable_llm_error(exc: BaseException) -> bool:
         "The model produced invalid content")
       - 400s except the terminal codes in ``_TERMINAL_400_CODES`` — a clean
         rerun from local history fixes stale server-side state (INF-3308)
+      - the Agents SDK's ``ModelBehaviorError`` ("Model did not produce a
+        final response!" when a stream truncates without a terminal event,
+        malformed tool-call JSON, calls to nonexistent tools): every variant
+        is nondeterministic sampled-output misbehavior, so a rerun from local
+        history can produce a well-formed turn. Other ``AgentsException``
+        subclasses stay non-retriable — ``MaxTurnsExceeded`` must terminate
+        the run and ``UserError`` / guardrail tripwires are deterministic.
     """
+    if isinstance(exc, ModelBehaviorError):
+        return True
     if isinstance(exc, (APIConnectionError, APITimeoutError, RateLimitError)):
         return True
     if isinstance(exc, APIStatusError):

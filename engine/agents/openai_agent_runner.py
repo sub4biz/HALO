@@ -78,7 +78,10 @@ class OpenAiAgentRunner:
 
         Mid-stream failures (events already processed when the stream dies —
         dropped connections, incomplete chunked reads, stale ``rs_*`` 400s from
-        the SDK re-sending Responses-API reasoning items) are recovered by
+        the SDK re-sending Responses-API reasoning items, streams that end
+        without a terminal event and surface as the SDK's
+        ``ModelBehaviorError: Model did not produce a final response!``) are
+        recovered by
         rerunning from the LOCAL conversation history (INF-3504 / INF-3308):
         completed turns stay in ``agent_context``; only a trailing incomplete
         tool turn is trimmed (see ``AgentContext.trim_incomplete_tool_turn``)

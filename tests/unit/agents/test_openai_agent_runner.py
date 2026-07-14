@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from agents import ModelBehaviorError
 from openai import APIConnectionError, APIError, AsyncOpenAI, BadRequestError
 
 from engine.agents.agent_context import AgentContext
@@ -746,6 +747,54 @@ async def test_runner_retries_stale_response_state_400_mid_stream() -> None:
 
     assert len(calls) == 2
     assert [item.content for item in ctx.items] == ["worked a bit", "answer"]
+
+
+@pytest.mark.asyncio
+async def test_runner_retries_model_behavior_error_when_stream_has_no_final_response() -> None:
+    """The SDK raises ``ModelBehaviorError: Model did not produce a final
+    response!`` when a stream truncates without a terminal event. The runner
+    reruns from local history instead of failing the run — previously this
+    escaped as non-retriable and killed the whole run on the root turn."""
+    bus = EngineOutputBus()
+    ctx = _context()
+    execution = AgentExecution(
+        agent_id="root",
+        agent_name="root",
+        depth=0,
+        parent_agent_id=None,
+        parent_tool_call_id=None,
+    )
+
+    calls: list[list[dict]] = []
+
+    async def stream_truncates_without_final_response(*, agent, input, context):
+        calls.append(input)
+        if len(calls) == 1:
+            return _StreamYieldsThenRaises(
+                [_assistant_event("partial answer")],
+                ModelBehaviorError("Model did not produce a final response!"),
+            )
+        return _FakeStream([_assistant_event("answer\n<final/>")])
+
+    runner = OpenAiAgentRunner(
+        run_streamed=stream_truncates_without_final_response,
+        client=_DUMMY_CLIENT,
+        retry_backoff_base=0.0,
+    )
+
+    await runner.run(
+        sdk_agent=object(),
+        agent_context=ctx,
+        agent_execution=execution,
+        output_bus=bus,
+        is_root=True,
+    )
+
+    assert len(calls) == 2
+    # The retry replays the completed assistant message from local history.
+    assert calls[1] == [{"role": "assistant", "content": "partial answer"}]
+    assert [item.content for item in ctx.items] == ["partial answer", "answer"]
+    assert execution.consecutive_llm_failures == 0
 
 
 @pytest.mark.asyncio
