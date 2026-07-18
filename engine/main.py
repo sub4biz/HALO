@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Iterator, Sequence
 from pathlib import Path
 from typing import TypeVar
 
@@ -36,11 +36,17 @@ logger = logging.getLogger(__name__)
 async def stream_engine_async(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_path: Path,
+    trace_path: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> AsyncGenerator[EngineStreamEvent, None]:
     """Run the HALO engine and stream events as they happen.
+
+    ``trace_path`` is one JSONL file or a sequence of them — a dataset may
+    span multiple files, each indexed independently and queried as one
+    dataset. Trace ids must be unique across files. Callers describe what
+    each file encodes through ``EngineConfig.dataset_context`` (or their
+    own prompt); the engine stays agnostic.
 
     Yields ``AgentOutputItem`` (assistant messages, tool calls, tool results)
     interleaved with ``AgentTextDelta`` (incremental token deltas). Items from
@@ -68,11 +74,15 @@ async def stream_engine_async(
             with halo_agent_span(span_name="halo-root.run", agent_id="halo", system="openai"):
                 sandbox = Sandbox.get()
 
-                index_path = await TraceIndexBuilder.ensure_index_exists(
-                    trace_path=trace_path,
-                    config=engine_config.trace_index,
-                )
-                trace_store = TraceStore.load(trace_path=trace_path, index_path=index_path)
+                trace_paths = [trace_path] if isinstance(trace_path, Path) else list(trace_path)
+                sources: list[tuple[Path, Path]] = []
+                for path in trace_paths:
+                    index_path = await TraceIndexBuilder.ensure_index_exists(
+                        trace_path=path,
+                        config=engine_config.trace_index,
+                    )
+                    sources.append((path, index_path))
+                trace_store = TraceStore.load_many(sources)
 
                 # Resolve the code repo (or None) before any LLM call so a bad
                 # ``repo_path`` fails fast. None leaves the code tools unregistered.
@@ -208,7 +218,7 @@ async def stream_engine_async(
 async def stream_engine_output_async(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_path: Path,
+    trace_path: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> AsyncGenerator[AgentOutputItem, None]:
@@ -254,7 +264,7 @@ def _drive_sync(agen: AsyncGenerator[_T, None]) -> Iterator[_T]:
 def stream_engine_output(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_path: Path,
+    trace_path: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> Iterator[AgentOutputItem]:
@@ -274,7 +284,7 @@ def stream_engine_output(
 async def run_engine_async(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_path: Path,
+    trace_path: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> list[AgentOutputItem]:
@@ -295,7 +305,7 @@ async def run_engine_async(
 def stream_engine(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_path: Path,
+    trace_path: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> Iterator[EngineStreamEvent]:
@@ -314,7 +324,7 @@ def stream_engine(
 def run_engine(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_path: Path,
+    trace_path: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> list[AgentOutputItem]:
