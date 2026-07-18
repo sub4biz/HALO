@@ -189,3 +189,61 @@ async def test_engine_wires_configured_client_via_run_config(
     # circuits lazy construction; verify the engine's client is what the
     # SDK will use rather than an env-var-built fallback.
     assert model_provider._get_client() is stub_client_instance
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_single_file_honors_explicit_index(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """A single-file dataset may pin its sidecar index location."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+
+    trace = tmp_path / "traces.jsonl"
+    trace.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
+    index = tmp_path / "pinned-index.jsonl"
+
+    sources = await _resolve_trace_sources(trace, config=TraceIndexConfig(index_path=index))
+
+    assert sources == [(trace, index)]
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_multi_file_derives_per_file_indexes(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """Each file in a multi-file dataset gets its own derived sidecar index."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+
+    first = tmp_path / "conversations.jsonl"
+    first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
+    second = tmp_path / "evals.jsonl"
+    second.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+
+    sources = await _resolve_trace_sources([first, second], config=TraceIndexConfig())
+
+    assert sources == [
+        (first, Path(str(first) + ".engine-index.jsonl")),
+        (second, Path(str(second) + ".engine-index.jsonl")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_rejects_explicit_index_for_multi_file(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """A single pinned index_path cannot serve multiple files — fail fast."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+
+    first = tmp_path / "conversations.jsonl"
+    first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
+    second = tmp_path / "evals.jsonl"
+    second.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+
+    with pytest.raises(ValueError, match="multi-file dataset"):
+        await _resolve_trace_sources(
+            [first, second],
+            config=TraceIndexConfig(index_path=tmp_path / "shared-index.jsonl"),
+        )

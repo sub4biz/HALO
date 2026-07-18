@@ -307,12 +307,12 @@ async def test_cannot_write_to_mounted_trace_file(tmp_path: Path, fixtures_dir: 
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     original_bytes = trace_path.read_bytes()
     result = await sandbox.run_python(
-        code=("with open('/input/traces.jsonl', 'wb') as f:\n    f.write(b'POISONED')\n"),
+        code=("with open('/input/traces_0.jsonl', 'wb') as f:\n    f.write(b'POISONED')\n"),
         sources=[(trace_path, index_path)],
     )
     # The write itself may succeed in WASM — what matters is the host file.
     assert trace_path.read_bytes() == original_bytes, (
-        f"sandbox write to virtual /input/traces.jsonl leaked to host {trace_path}"
+        f"sandbox write to virtual /input/traces_0.jsonl leaked to host {trace_path}"
         f" — got {result.stdout!r} / {result.stderr!r}"
     )
 

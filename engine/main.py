@@ -26,11 +26,41 @@ from engine.sandbox.sandbox import Sandbox
 from engine.telemetry import resolve_run_id, setup_telemetry
 from engine.telemetry.tracing import halo_agent_span
 from engine.tools.subagent_tool_factory import build_root_sdk_agent
+from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.trace_index_builder import TraceIndexBuilder
 from engine.traces.trace_store import TraceStore
 
 _T = TypeVar("_T")
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_trace_sources(
+    trace_path: Path | Sequence[Path], *, config: TraceIndexConfig
+) -> list[tuple[Path, Path]]:
+    """Build the ``(trace_path, index_path)`` pairs for the dataset's files.
+
+    A dataset may span one or many JSONL files. Each file gets its own
+    sidecar index (``ensure_index_exists`` derives ``<trace>.engine-index.jsonl``
+    when ``config.index_path`` is unset). An explicit ``index_path`` can
+    only name one file's sidecar, so it's rejected for a multi-file
+    dataset — otherwise every file would share one index and ``load_many``
+    would pair traces with the wrong byte offsets.
+    """
+    trace_paths = [trace_path] if isinstance(trace_path, Path) else list(trace_path)
+    if len(trace_paths) > 1 and config.index_path is not None:
+        raise ValueError(
+            "trace_index.index_path cannot be set for a multi-file dataset: a single "
+            "sidecar path can't serve multiple files. Leave it unset so each file "
+            "derives its own index from its trace path."
+        )
+    sources: list[tuple[Path, Path]] = []
+    for path in trace_paths:
+        index_path = await TraceIndexBuilder.ensure_index_exists(
+            trace_path=path,
+            config=config,
+        )
+        sources.append((path, index_path))
+    return sources
 
 
 async def stream_engine_async(
@@ -74,14 +104,7 @@ async def stream_engine_async(
             with halo_agent_span(span_name="halo-root.run", agent_id="halo", system="openai"):
                 sandbox = Sandbox.get()
 
-                trace_paths = [trace_path] if isinstance(trace_path, Path) else list(trace_path)
-                sources: list[tuple[Path, Path]] = []
-                for path in trace_paths:
-                    index_path = await TraceIndexBuilder.ensure_index_exists(
-                        trace_path=path,
-                        config=engine_config.trace_index,
-                    )
-                    sources.append((path, index_path))
+                sources = await _resolve_trace_sources(trace_path, config=engine_config.trace_index)
                 trace_store = TraceStore.load_many(sources)
 
                 # Resolve the code repo (or None) before any LLM call so a bad
