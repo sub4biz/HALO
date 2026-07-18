@@ -42,8 +42,7 @@ async def test_run_code_tool_delegates_to_sandbox_in_tool_context(
     assert result.exit_code == 0
     fake_sandbox.run_python.assert_awaited_once_with(
         code="print('hello')",
-        trace_path=store.trace_path,
-        index_path=store.index_path,
+        sources=store.sources,
     )
 
 

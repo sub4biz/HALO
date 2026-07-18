@@ -175,7 +175,7 @@ def _install_session_stub(
             return b""
 
         async def mount(self, _host: Path, _virtual: str) -> None: ...
-        async def bootstrap(self, _t: str, _i: str) -> CodeExecutionResult:
+        async def bootstrap(self, _sources: list[tuple[str, str]]) -> CodeExecutionResult:
             return CodeExecutionResult(exit_code=0, stdout="", stderr="", timed_out=False)
 
         async def execute(self, _code: str) -> CodeExecutionResult:
@@ -204,7 +204,7 @@ async def test_run_python_includes_trace_and_index_in_allow_read(
     captured: dict[str, list[str]] = {}
     _install_session_stub(monkeypatch, captured_argv=captured)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 0
     assert result.stdout == "ok"
 
@@ -233,7 +233,7 @@ async def test_run_python_does_not_pass_unsafe_flags(
     captured: dict[str, list[str]] = {}
     _install_session_stub(monkeypatch, captured_argv=captured)
 
-    await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    await sandbox.run_python(code="x=1", sources=[(trace, index)])
     forbidden = ("--allow-net", "--allow-write", "--allow-env", "--allow-run", "--allow-all")
     for flag in forbidden:
         assert not any(arg.startswith(flag) for arg in captured["argv"]), (
@@ -286,7 +286,7 @@ async def test_run_python_returns_sad_result_on_unexpected_exception(
 
     monkeypatch.setattr(sandbox_module, "_RunnerSession", _ExplodingSession)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 1
     assert result.timed_out is False
     assert "OSError" in result.stderr or "simulated spawn failure" in result.stderr
@@ -333,7 +333,7 @@ async def test_run_python_does_not_swallow_cancellation(
     monkeypatch.setattr(sandbox_module, "_RunnerSession", _CancellingSession)
 
     with pytest.raises(asyncio.CancelledError):
-        await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+        await sandbox.run_python(code="x=1", sources=[(trace, index)])
 
 
 @pytest.mark.asyncio
@@ -359,7 +359,7 @@ async def test_run_python_returns_runner_result_unchanged(
     )
     _install_session_stub(monkeypatch, result=expected)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result == expected
 
 
@@ -545,7 +545,7 @@ async def test_run_python_sends_shutdown_after_mount_file_error(
 
     capture = _install_session_internals_stubs(monkeypatch, rpc_responder=_responder)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 1
     assert result.timed_out is False
     assert "mount_file" in result.stderr
@@ -582,7 +582,7 @@ async def test_run_python_sends_shutdown_after_bootstrap_rpc_error(
 
     capture = _install_session_internals_stubs(monkeypatch, rpc_responder=_responder)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 1
     assert "bootstrap" in result.stderr
     assert "runner rejected bootstrap" in result.stderr
@@ -624,7 +624,7 @@ async def test_run_python_sends_shutdown_after_bootstrap_python_error(
 
     capture = _install_session_internals_stubs(monkeypatch, rpc_responder=_responder)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 1
     assert "ValueError: bad index" in result.stderr
     assert capture.phases == ["mount_file", "mount_file", "bootstrap"]
@@ -664,7 +664,7 @@ async def test_run_python_preserves_result_when_shutdown_send_fails(
         monkeypatch, rpc_responder=_responder, send_failure_for="shutdown"
     )
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 0
     assert result.stdout == "real result\n"
     assert result.timed_out is False
@@ -746,7 +746,7 @@ async def test_run_python_does_not_hang_when_protocol_returns_early(
     monkeypatch.setattr(sandbox_module.asyncio, "create_subprocess_exec", _stub_create_subprocess)
 
     result = await asyncio.wait_for(
-        sandbox.run_python(code="x=1", trace_path=trace, index_path=index),
+        sandbox.run_python(code="x=1", sources=[(trace, index)]),
         timeout=2.0,
     )
     assert result.exit_code == 1
@@ -785,7 +785,7 @@ async def test_bootstrap_traceback_is_byte_capped(
 
     _install_session_internals_stubs(monkeypatch, rpc_responder=_responder)
 
-    result = await sandbox.run_python(code="x=1", trace_path=trace, index_path=index)
+    result = await sandbox.run_python(code="x=1", sources=[(trace, index)])
     assert result.exit_code == 1
     assert len(result.stderr.encode("utf-8")) <= sandbox_module._MAX_STDERR_BYTES, (
         f"bootstrap stderr is {len(result.stderr.encode('utf-8'))} bytes, "

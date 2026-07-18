@@ -7,7 +7,7 @@
 //
 // Methods (host → runner):
 //   mount_file   {host_path, virtual_path}            read host file, write to pyodide FS
-//   bootstrap    {trace_path, index_path}             load trace_store, build user globals
+//   bootstrap    {sources:[{trace_path,index_path}]}  load trace_store (union), build user globals
 //   execute      {code}                               run user Python; return {exit_code, stdout, stderr}
 //   shutdown                                          notification, exits the loop
 //
@@ -155,12 +155,15 @@ function callPyResult(fn, ...args) {
 }
 
 function bootstrap(params) {
-  const tracePath = params.trace_path;
-  const indexPath = params.index_path;
-  if (!tracePath || !indexPath) {
-    throw new Error("bootstrap requires trace_path and index_path");
+  const sources = params.sources;
+  if (!Array.isArray(sources) || sources.length === 0) {
+    throw new Error("bootstrap requires a non-empty sources array");
   }
-  return callPyResult(pyodide.globals.get("halo_bootstrap"), tracePath, indexPath);
+  // Marshal the (trace_path, index_path) pairs as a JSON string so the
+  // Python side gets a plain ``str`` to ``json.loads`` — passing a JS
+  // array of objects would arrive as a JsProxy and complicate the
+  // in-Pyodide ``load_many`` wiring.
+  return callPyResult(pyodide.globals.get("halo_bootstrap"), JSON.stringify(sources));
 }
 
 function executeCode(params) {

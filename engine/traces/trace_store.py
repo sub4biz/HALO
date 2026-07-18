@@ -254,6 +254,17 @@ class TraceStore:
         """The first (primary) sidecar index path this store was loaded from."""
         return self._sources[0][1]
 
+    @property
+    def sources(self) -> list[tuple[Path, Path]]:
+        """Every ``(trace_path, index_path)`` pair this store reads, in load order.
+
+        Consumers that stand up their own store over the same dataset
+        (e.g. the sandbox loading a ``TraceStore`` inside Pyodide) must
+        use this rather than ``trace_path``/``index_path`` so they see the
+        whole union instead of only the primary file.
+        """
+        return list(self._sources)
+
     def view_trace(self, trace_id: str) -> "TraceView":
         """Read all spans of one trace by seeking to each indexed byte offset and parsing as SpanRecord.
 

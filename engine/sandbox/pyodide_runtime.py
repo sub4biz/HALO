@@ -40,17 +40,20 @@ _user_globals: dict[str, Any] = {}
 _bootstrapped: bool = False
 
 
-def halo_bootstrap(trace_path: str, index_path: str) -> dict[str, Any]:
-    """Build the user-facing globals dict from mounted trace + index files.
+def halo_bootstrap(sources_json: str) -> dict[str, Any]:
+    """Build the user-facing globals dict from the mounted dataset files.
 
     Runs once per sandbox session, before the first ``halo_execute``.
+    ``sources_json`` is a JSON array of ``{"trace_path", "index_path"}``
+    objects — the mounted virtual paths of every file in the dataset.
     Imports numpy/pandas plus the real ``engine.traces.trace_store`` (the
     runner stages the host's ``engine`` package source into ``/halo/`` at
-    boot, which is why the import works in WASM), loads the index from
-    the mounted virtual paths, and stashes the resulting ``trace_store``
-    plus convenience aliases. Returns the standard capture envelope so a
-    setup failure (malformed index, missing dependency) surfaces with a
-    real traceback rather than a blank ``halo_execute`` failure later.
+    boot, which is why the import works in WASM), unions the files into
+    one ``TraceStore`` via ``load_many``, and stashes the resulting
+    ``trace_store`` plus convenience aliases. Returns the standard capture
+    envelope so a setup failure (malformed index, missing dependency)
+    surfaces with a real traceback rather than a blank ``halo_execute``
+    failure later.
     """
     global _bootstrapped
     buf_stdout = io.StringIO()
@@ -66,15 +69,18 @@ def halo_bootstrap(trace_path: str, index_path: str) -> dict[str, Any]:
         if "/halo" not in sys.path:
             sys.path.insert(0, "/halo")
 
+        import json
+
         import numpy
         import pandas
 
         from engine.traces.trace_store import TraceStore
 
-        trace_store = TraceStore.load(
-            trace_path=Path(trace_path),
-            index_path=Path(index_path),
-        )
+        sources = [
+            (Path(source["trace_path"]), Path(source["index_path"]))
+            for source in json.loads(sources_json)
+        ]
+        trace_store = TraceStore.load_many(sources)
         _user_globals.clear()
         _user_globals.update(
             {

@@ -34,6 +34,5 @@ class RunCodeTool:
         store = tool_context.require_trace_store()
         return await sandbox.run_python(
             code=arguments.code,
-            trace_path=store.trace_path,
-            index_path=store.index_path,
+            sources=store.sources,
         )

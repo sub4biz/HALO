@@ -35,8 +35,7 @@ async def test_cannot_write_to_host_filesystem(tmp_path: Path, fixtures_dir: Pat
     target = tmp_path / "must-not-exist.txt"
     await sandbox.run_python(
         code=f"open({str(target)!r}, 'w').write('no')",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     # The write may succeed inside Pyodide's in-memory FS, but it must
     # never produce a file on the host filesystem. (We don't assert on
@@ -55,8 +54,7 @@ async def test_cannot_read_outside_allowed_paths(tmp_path: Path, fixtures_dir: P
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code="print(open('/etc/passwd').read()[:10])",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
     assert (
@@ -77,8 +75,7 @@ async def test_no_network(tmp_path: Path, fixtures_dir: Path) -> None:
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code=("import socket\ns = socket.socket()\ns.connect(('1.1.1.1', 80))\n"),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -95,8 +92,7 @@ async def test_no_subprocess_spawn(tmp_path: Path, fixtures_dir: Path) -> None:
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code="import subprocess; subprocess.run(['/bin/echo', 'leak'], check=True)",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -123,8 +119,7 @@ async def test_no_host_env_visible(tmp_path: Path, fixtures_dir: Path) -> None:
             "print('HALO_SANDBOX_PROBE_USER=' + os.environ.get('USER', '<unset>'))\n"
             "print('HALO_SANDBOX_PROBE_HOME=' + os.environ.get('HOME', '<unset>'))\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code == 0, result.stderr
     assert f"HALO_SANDBOX_PROBE_USER={host_user}" not in result.stdout, (
@@ -153,8 +148,7 @@ async def test_secret_env_var_does_not_leak(
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code=("import os\nfor k, v in os.environ.items():\n    print(f'{k}={v}')\n"),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code == 0, result.stderr
     assert sentinel not in result.stdout, (
@@ -177,8 +171,7 @@ async def test_proc_self_environ_does_not_leak(tmp_path: Path, fixtures_dir: Pat
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code="print(open('/proc/self/environ', 'rb').read()[:64])",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
     assert (
@@ -202,8 +195,7 @@ async def test_no_http_via_urllib(tmp_path: Path, fixtures_dir: Path) -> None:
             "import urllib.request\n"
             "urllib.request.urlopen('http://example.com', timeout=5).read()\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -233,8 +225,7 @@ async def test_dns_does_not_leak_to_host_resolver(tmp_path: Path, fixtures_dir: 
             "ips = sorted({a[4][0] for a in addrs})\n"
             "print('IPS=' + ','.join(ips))\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     # Real example.com IPv4 addresses (currently 23.215.0.{132..138} /
     # 23.220.75.{232..245} / 96.7.128.{175..200} per IANA's reserved
@@ -262,8 +253,7 @@ async def test_no_loopback_connection(tmp_path: Path, fixtures_dir: Path) -> Non
         code=(
             "import socket\ns = socket.socket()\ns.settimeout(2.0)\ns.connect(('127.0.0.1', 22))\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -281,8 +271,7 @@ async def test_no_os_system(tmp_path: Path, fixtures_dir: Path) -> None:
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code="import os; rc = os.system('/bin/echo leak'); raise SystemExit(0 if rc != 0 else 1)",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -299,8 +288,7 @@ async def test_no_os_fork(tmp_path: Path, fixtures_dir: Path) -> None:
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code="import os; os.fork()",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -320,8 +308,7 @@ async def test_cannot_write_to_mounted_trace_file(tmp_path: Path, fixtures_dir: 
     original_bytes = trace_path.read_bytes()
     result = await sandbox.run_python(
         code=("with open('/input/traces.jsonl', 'wb') as f:\n    f.write(b'POISONED')\n"),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     # The write itself may succeed in WASM — what matters is the host file.
     assert trace_path.read_bytes() == original_bytes, (
@@ -347,8 +334,7 @@ async def test_cannot_write_to_runner_via_allowed_read_path(
         code=("import js\njs.Deno.writeTextFileSync({path!r}, 'POISONED')\n").format(
             path=str(runner_path)
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
     # And host file must still be untouched.
@@ -372,8 +358,7 @@ async def test_no_filesystem_via_js_bridge(tmp_path: Path, fixtures_dir: Path) -
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code="import js; print(js.Deno.readTextFileSync('/etc/passwd')[:32])",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
     assert (
@@ -400,8 +385,7 @@ async def test_no_network_via_js_bridge(tmp_path: Path, fixtures_dir: Path) -> N
             "    return await js.fetch('http://example.com')\n"
             "asyncio.get_event_loop().run_until_complete(go())\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -421,8 +405,7 @@ async def test_no_subprocess_via_js_bridge(tmp_path: Path, fixtures_dir: Path) -
             "cmd = js.Deno.Command.new('/bin/echo', {'args': ['leak']})\n"
             "cmd.outputSync()\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
 
@@ -441,7 +424,6 @@ async def test_no_ctypes_load(tmp_path: Path, fixtures_dir: Path) -> None:
     sandbox, trace_path, index_path = await _ready(tmp_path, fixtures_dir)
     result = await sandbox.run_python(
         code=("import ctypes\nlibc = ctypes.CDLL('libc.so.6')\nlibc.system(b'/bin/echo leak')\n"),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[(trace_path, index_path)],
     )
     assert result.exit_code != 0
