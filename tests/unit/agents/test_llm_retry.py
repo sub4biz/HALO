@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from agents import MaxTurnsExceeded, ModelBehaviorError, UserError
 from openai import (
     APIConnectionError,
     APIError,
@@ -69,6 +70,30 @@ def test_non_terminal_400_is_retriable(message: str) -> None:
 
 def test_non_400_4xx_is_not_retriable() -> None:
     assert not is_retriable_llm_error(_status_error(404, "not found"))
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        # Stream truncated without a terminal event (agents run_loop).
+        "Model did not produce a final response!",
+        # Other nondeterministic model-output misbehavior the SDK wraps.
+        'Invalid JSON input for tool query_traces: {"q": ',
+        "Tool nonexistent_tool not found in agent halo",
+    ],
+)
+def test_model_behavior_error_is_retriable(message: str) -> None:
+    # A rerun from local history re-samples the turn, so every
+    # ``ModelBehaviorError`` variant is worth retrying (bounded by the
+    # runner circuit breaker).
+    assert is_retriable_llm_error(ModelBehaviorError(message))
+
+
+def test_other_agents_exceptions_are_not_retriable() -> None:
+    # ``MaxTurnsExceeded`` must terminate the run; ``UserError`` is a
+    # deterministic configuration bug. Only ``ModelBehaviorError`` retries.
+    assert not is_retriable_llm_error(MaxTurnsExceeded("Max turns (30) exceeded"))
+    assert not is_retriable_llm_error(UserError("bad SDK usage"))
 
 
 def test_unrelated_exception_is_not_retriable() -> None:
