@@ -15,6 +15,7 @@ from engine.engine_config import EngineConfig
 from engine.main import _drive_sync
 from engine.model_config import ModelConfig
 from engine.models.messages import AgentMessage
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from tests._sdk_events import assistant_message_event
 from tests.probes.probe_kit import FakeRunner
 
@@ -39,7 +40,7 @@ def test_public_entrypoints_exist_and_are_async() -> None:
 def test_async_signatures_match() -> None:
     for fn in (engine_main.stream_engine_async, engine_main.run_engine_async):
         params = list(inspect.signature(fn).parameters)
-        assert params[:3] == ["messages", "engine_config", "trace_path"]
+        assert params[:3] == ["messages", "engine_config", "trace_paths"]
 
 
 def test_drive_sync_runs_finally_on_early_break() -> None:
@@ -189,3 +190,83 @@ async def test_engine_wires_configured_client_via_run_config(
     # circuits lazy construction; verify the engine's client is what the
     # SDK will use rather than an env-var-built fallback.
     assert model_provider._get_client() is stub_client_instance
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_multi_file_derives_per_file_indexes(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """Each file in a multi-file dataset gets its own derived sidecar index."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+
+    first = tmp_path / "conversations.jsonl"
+    first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
+    second = tmp_path / "evals.jsonl"
+    second.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+
+    sources = await _resolve_trace_sources([first, second], config=TraceIndexConfig())
+
+    assert sources == [
+        TraceDatasetSource(trace_path=first, index_path=Path(str(first) + ".engine-index.jsonl")),
+        TraceDatasetSource(trace_path=second, index_path=Path(str(second) + ".engine-index.jsonl")),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_index_dir_holds_every_file_index(
+    tmp_path: Path, fixtures_dir: Path
+) -> None:
+    """A single ``index_dir`` serves a multi-file dataset — one index file per
+    trace, named after it, all inside that directory."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+    from engine.traces.trace_index_builder import sidecar_index_path
+
+    first = tmp_path / "conversations.jsonl"
+    first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
+    second = tmp_path / "evals.jsonl"
+    second.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+    index_dir = tmp_path / "indexes"
+
+    sources = await _resolve_trace_sources(
+        [first, second], config=TraceIndexConfig(index_dir=index_dir)
+    )
+
+    first_index = sidecar_index_path(first, index_dir)
+    second_index = sidecar_index_path(second, index_dir)
+    assert sources == [
+        TraceDatasetSource(trace_path=first, index_path=first_index),
+        TraceDatasetSource(trace_path=second, index_path=second_index),
+    ]
+    # Both indexes are distinct real files in the one directory.
+    assert first_index != second_index
+    assert first_index.parent == index_dir and second_index.parent == index_dir
+    assert first_index.is_file() and second_index.is_file()
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_requires_at_least_one_path() -> None:
+    """An empty dataset is a caller bug — fail fast rather than load nothing."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+
+    with pytest.raises(ValueError, match="at least one trace path"):
+        await _resolve_trace_sources([], config=TraceIndexConfig())
+
+
+def test_as_trace_path_list_wraps_a_bare_path() -> None:
+    """The public-edge single-path convenience normalizes to a one-item list."""
+    from engine.main import _as_trace_path_list
+
+    one = Path("/data/traces.jsonl")
+    assert _as_trace_path_list(one) == [one]
+
+
+def test_as_trace_path_list_passes_a_sequence_through() -> None:
+    """A list (or tuple) of paths comes back as a list unchanged."""
+    from engine.main import _as_trace_path_list
+
+    paths = [Path("/data/a.jsonl"), Path("/data/b.jsonl")]
+    assert _as_trace_path_list(paths) == paths
+    assert _as_trace_path_list(tuple(paths)) == paths

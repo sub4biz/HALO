@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
 from engine.traces.models.canonical_span import SpanRecord
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from engine.traces.models.trace_index_models import TraceIndexRow
 
 if TYPE_CHECKING:
@@ -176,7 +177,11 @@ def _build_match_record(
 
 
 class TraceStore:
-    """Pure read/query/render API over a built index plus the canonical JSONL.
+    """Pure read/query/render API over built indexes plus the canonical JSONL file(s).
+
+    A dataset may span multiple JSONL files (each with its own sidecar
+    index); trace ids must be unique across them. Every query surface
+    treats the union as one dataset — callers never see file boundaries.
 
     Deliberately depends only on stdlib + Pydantic + ``engine.traces.models`` so the
     sandbox can import and instantiate it directly inside user code, with no agent
@@ -184,11 +189,14 @@ class TraceStore:
     """
 
     def __init__(self, trace_path: Path, index_path: Path, rows: list[TraceIndexRow]) -> None:
-        """Hold paths plus the in-memory index rows; prefer ``load`` for constructing from disk."""
-        self._trace_path = trace_path
-        self._index_path = index_path
+        """Hold one file's paths plus its in-memory index rows; prefer ``load`` /
+        ``load_many`` for constructing from disk."""
+        self._sources: list[TraceDatasetSource] = [
+            TraceDatasetSource(trace_path=trace_path, index_path=index_path)
+        ]
         self._rows = rows
         self._rows_by_id: dict[str, TraceIndexRow] = {r.trace_id: r for r in rows}
+        self._path_by_trace_id: dict[str, Path] = {r.trace_id: trace_path for r in rows}
 
     @classmethod
     def load(cls, trace_path: Path, index_path: Path) -> "TraceStore":
@@ -197,6 +205,38 @@ class TraceStore:
         rows = [TraceIndexRow.model_validate_json(line) for line in raw if line]
         return cls(trace_path=trace_path, index_path=index_path, rows=rows)
 
+    @classmethod
+    def load_many(cls, sources: list[TraceDatasetSource]) -> "TraceStore":
+        """Construct one store over several dataset files.
+
+        The files form a single logical dataset; a trace id appearing in
+        more than one file raises ``ValueError`` — cross-file traces are
+        not merged, and silently shadowing one file's trace with
+        another's would corrupt every downstream read.
+        """
+        if not sources:
+            raise ValueError("load_many requires at least one TraceDatasetSource")
+        first = sources[0]
+        store = cls.load(trace_path=first.trace_path, index_path=first.index_path)
+        for source in sources[1:]:
+            raw = source.index_path.read_text().splitlines()
+            rows = [TraceIndexRow.model_validate_json(line) for line in raw if line]
+            for row in rows:
+                if row.trace_id in store._rows_by_id:
+                    raise ValueError(
+                        f"trace_id {row.trace_id!r} appears in more than one dataset file "
+                        f"({store._path_by_trace_id[row.trace_id]} and {source.trace_path})"
+                    )
+                store._rows.append(row)
+                store._rows_by_id[row.trace_id] = row
+                store._path_by_trace_id[row.trace_id] = source.trace_path
+            store._sources.append(source)
+        return store
+
+    def _trace_file_for(self, trace_id: str) -> Path:
+        """The JSONL file holding ``trace_id``'s spans."""
+        return self._path_by_trace_id[trace_id]
+
     @property
     def trace_count(self) -> int:
         """Total trace count in the loaded index (no filtering)."""
@@ -204,13 +244,29 @@ class TraceStore:
 
     @property
     def trace_path(self) -> Path:
-        """The canonical JSONL path this store reads spans from."""
-        return self._trace_path
+        """The first (primary) JSONL path this store reads spans from."""
+        return self._sources[0].trace_path
+
+    @property
+    def trace_paths(self) -> list[Path]:
+        """Every JSONL file in the dataset, in load order."""
+        return [source.trace_path for source in self._sources]
 
     @property
     def index_path(self) -> Path:
-        """The sidecar index path this store was loaded from."""
-        return self._index_path
+        """The first (primary) sidecar index path this store was loaded from."""
+        return self._sources[0].index_path
+
+    @property
+    def sources(self) -> list[TraceDatasetSource]:
+        """Every dataset file this store reads, in load order.
+
+        Consumers that stand up their own store over the same dataset
+        (e.g. the sandbox loading a ``TraceStore`` inside Pyodide) must
+        use this rather than ``trace_path``/``index_path`` so they see the
+        whole union instead of only the primary file.
+        """
+        return list(self._sources)
 
     def view_trace(self, trace_id: str) -> "TraceView":
         """Read all spans of one trace by seeking to each indexed byte offset and parsing as SpanRecord.
@@ -233,7 +289,7 @@ class TraceStore:
             raise KeyError(trace_id)
         row = self._rows_by_id[trace_id]
 
-        with self._trace_path.open("rb") as fh:
+        with self._trace_file_for(trace_id).open("rb") as fh:
             spans: list[SpanRecord] = []
             for offset, length in zip(row.byte_offsets, row.byte_lengths, strict=True):
                 fh.seek(offset)
@@ -312,7 +368,7 @@ class TraceStore:
             return TraceView(trace_id=trace_id, spans=[])
 
         spans: list[SpanRecord] = []
-        with self._trace_path.open("rb") as fh:
+        with self._trace_file_for(trace_id).open("rb") as fh:
             for offset, length in zip(row.byte_offsets, row.byte_lengths, strict=True):
                 fh.seek(offset)
                 blob = fh.read(length)
@@ -487,7 +543,7 @@ class TraceStore:
         matches: list["SpanMatchRecord"] = []
         match_count = 0
 
-        with self._trace_path.open("rb") as fh:
+        with self._trace_file_for(trace_id).open("rb") as fh:
             for span_index, (offset, length) in enumerate(
                 zip(row.byte_offsets, row.byte_lengths, strict=True)
             ):
@@ -553,7 +609,7 @@ class TraceStore:
         matches: list["SpanMatchRecord"] = []
         match_count = 0
 
-        with self._trace_path.open("rb") as fh:
+        with self._trace_file_for(trace_id).open("rb") as fh:
             for span_index, (offset, length) in enumerate(
                 zip(row.byte_offsets, row.byte_lengths, strict=True)
             ):
@@ -631,8 +687,17 @@ class TraceStore:
         if filters.regex_pattern is None:
             return rows
         pattern = _compile_regex_or_raise(filters.regex_pattern)
-        with self._trace_path.open("rb") as fh:
-            return [r for r in rows if _row_has_content_match(fh, r, pattern)]
+        # One open handle per dataset file, reused across that file's rows.
+        surviving: set[str] = set()
+        by_path: dict[Path, list[TraceIndexRow]] = {}
+        for r in rows:
+            by_path.setdefault(self._trace_file_for(r.trace_id), []).append(r)
+        for path, path_rows in by_path.items():
+            with path.open("rb") as fh:
+                surviving.update(
+                    r.trace_id for r in path_rows if _row_has_content_match(fh, r, pattern)
+                )
+        return [r for r in rows if r.trace_id in surviving]
 
 
 def _row_has_content_match(fh: IO[bytes], row: TraceIndexRow, pattern: re.Pattern[str]) -> bool:

@@ -30,7 +30,6 @@ from __future__ import annotations
 import io
 import sys
 import traceback
-from pathlib import Path
 from typing import Any
 
 # Module-state pair owned by ``halo_bootstrap`` and read by ``halo_execute``.
@@ -40,17 +39,20 @@ _user_globals: dict[str, Any] = {}
 _bootstrapped: bool = False
 
 
-def halo_bootstrap(trace_path: str, index_path: str) -> dict[str, Any]:
-    """Build the user-facing globals dict from mounted trace + index files.
+def halo_bootstrap(sources_json: str) -> dict[str, Any]:
+    """Build the user-facing globals dict from the mounted dataset files.
 
     Runs once per sandbox session, before the first ``halo_execute``.
-    Imports numpy/pandas plus the real ``engine.traces.trace_store`` (the
-    runner stages the host's ``engine`` package source into ``/halo/`` at
-    boot, which is why the import works in WASM), loads the index from
-    the mounted virtual paths, and stashes the resulting ``trace_store``
-    plus convenience aliases. Returns the standard capture envelope so a
-    setup failure (malformed index, missing dependency) surfaces with a
-    real traceback rather than a blank ``halo_execute`` failure later.
+    ``sources_json`` is the JSON encoding of a ``list[TraceDatasetSource]``
+    — the mounted virtual paths of every file in the dataset. Imports
+    numpy/pandas plus the real ``engine.traces.trace_store`` (the runner
+    stages the host's ``engine`` package source into ``/halo/`` at boot,
+    which is why the import works in WASM), validates the sources back
+    into the shared model, unions the files into one ``TraceStore`` via
+    ``load_many``, and stashes the resulting ``trace_store`` plus
+    convenience aliases. Returns the standard capture envelope so a setup
+    failure (malformed index, missing dependency) surfaces with a real
+    traceback rather than a blank ``halo_execute`` failure later.
     """
     global _bootstrapped
     buf_stdout = io.StringIO()
@@ -69,12 +71,13 @@ def halo_bootstrap(trace_path: str, index_path: str) -> dict[str, Any]:
         import numpy
         import pandas
 
+        from engine.traces.models.trace_dataset_source import (
+            TRACE_DATASET_SOURCES_ADAPTER,
+        )
         from engine.traces.trace_store import TraceStore
 
-        trace_store = TraceStore.load(
-            trace_path=Path(trace_path),
-            index_path=Path(index_path),
-        )
+        sources = TRACE_DATASET_SOURCES_ADAPTER.validate_json(sources_json)
+        trace_store = TraceStore.load_many(sources)
         _user_globals.clear()
         _user_globals.update(
             {

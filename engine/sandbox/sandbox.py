@@ -24,11 +24,13 @@ import signal
 import subprocess
 import sys
 import urllib.request
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, TypedDict
 
 from engine.sandbox.models import CodeExecutionResult
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 
 _logger = logging.getLogger(__name__)
 
@@ -55,11 +57,19 @@ _REQUIRED_PACKAGES: tuple[str, ...] = ("numpy", "pandas", "pydantic")
 
 _WHEEL_BASE_URL = f"https://cdn.jsdelivr.net/pyodide/v{_PYODIDE_VERSION}/full/"
 
-# Where the trace and index files live inside the Pyodide FS. Hardcoded so
-# the sandbox and the in-Pyodide ``halo_bootstrap`` stay aligned without
-# leaking host paths through the WASM filesystem.
-_TRACE_VIRTUAL_PATH = "/input/traces.jsonl"
-_INDEX_VIRTUAL_PATH = "/input/index.jsonl"
+
+# Where the dataset files live inside the Pyodide FS. A dataset may span
+# several ``(trace, index)`` files, so the mount points are indexed by
+# load order. Hardcoded so the sandbox and the in-Pyodide
+# ``halo_bootstrap`` stay aligned without leaking host paths through the
+# WASM filesystem.
+def _trace_virtual_path(source_index: int) -> str:
+    return f"/input/traces_{source_index}.jsonl"
+
+
+def _index_virtual_path(source_index: int) -> str:
+    return f"/input/index_{source_index}.jsonl"
+
 
 # Wall-clock budget for one ``run_python`` call. Generous default — cold
 # Pyodide boot can take 5-10s, so anything below ~30s would mask real bugs
@@ -214,28 +224,43 @@ class Sandbox:
         self,
         *,
         code: str,
-        trace_path: Path,
-        index_path: Path,
+        sources: Sequence[TraceDatasetSource],
     ) -> CodeExecutionResult:
         """Run ``code`` in the WASM sandbox; returns a typed result regardless of pass/fail/timeout.
 
+        ``sources`` is the dataset's files — one ``TraceDatasetSource`` for
+        a single-file dataset, several when the dataset spans multiple
+        files. The in-Pyodide ``trace_store`` is built over the whole union
+        (via ``TraceStore.load_many``), so user code sees the same traces
+        the host tools do.
+
         Mounting:
           - The runner.js + sibling .py files + Deno cache are read-only.
-          - The host trace + index are added to ``--allow-read`` for this
-            invocation only, so Deno can read them once to copy bytes into
-            Pyodide's virtual FS.
-          - Inside Pyodide, files appear at fixed virtual paths. The
-            runner stages the trace compat shim itself; the host only
+          - Every host trace + index file is added to ``--allow-read`` for
+            this invocation only, so Deno can read them once to copy bytes
+            into Pyodide's virtual FS.
+          - Inside Pyodide, files appear at fixed indexed virtual paths.
+            The runner stages the trace compat shim itself; the host only
             tells the bootstrap which mount points to load.
         """
-        trace = trace_path.resolve()
-        index = index_path.resolve()
-        session = _RunnerSession(argv=self._build_argv(extra_read_paths=[trace, index]))
+        if not sources:
+            raise ValueError("run_python requires at least one TraceDatasetSource")
+        resolved = [
+            TraceDatasetSource(
+                trace_path=source.trace_path.resolve(),
+                index_path=source.index_path.resolve(),
+            )
+            for source in sources
+        ]
+        extra_read_paths = [
+            path for source in resolved for path in (source.trace_path, source.index_path)
+        ]
+        session = _RunnerSession(argv=self._build_argv(extra_read_paths=extra_read_paths))
         try:
             await session.start()
             try:
                 result = await asyncio.wait_for(
-                    _run_protocol(session, trace=trace, index=index, code=code),
+                    _run_protocol(session, sources=resolved, code=code),
                     timeout=_TIMEOUT_SECONDS,
                 )
             except asyncio.TimeoutError:
@@ -326,20 +351,27 @@ class Sandbox:
 async def _run_protocol(
     session: "_RunnerSession",
     *,
-    trace: Path,
-    index: Path,
+    sources: list[TraceDatasetSource],
     code: str,
 ) -> CodeExecutionResult:
     """Mount → bootstrap → execute against a started session.
 
     Pure protocol: takes a session that's already passed its ready
-    sentinel and runs the deterministic JSON-RPC sequence. Lifecycle
-    (spawn, shutdown, kill, drain) belongs to ``Sandbox.run_python``
-    and the session itself.
+    sentinel and runs the deterministic JSON-RPC sequence. Every dataset
+    file is mounted at its own indexed virtual path, then bootstrap loads
+    them together. Lifecycle (spawn, shutdown, kill, drain) belongs to
+    ``Sandbox.run_python`` and the session itself.
     """
-    await session.mount(trace, _TRACE_VIRTUAL_PATH)
-    await session.mount(index, _INDEX_VIRTUAL_PATH)
-    boot = await session.bootstrap(_TRACE_VIRTUAL_PATH, _INDEX_VIRTUAL_PATH)
+    virtual_sources: list[TraceDatasetSource] = []
+    for source_index, source in enumerate(sources):
+        trace_virtual = _trace_virtual_path(source_index)
+        index_virtual = _index_virtual_path(source_index)
+        await session.mount(source.trace_path, trace_virtual)
+        await session.mount(source.index_path, index_virtual)
+        virtual_sources.append(
+            TraceDatasetSource(trace_path=Path(trace_virtual), index_path=Path(index_virtual))
+        )
+    boot = await session.bootstrap(virtual_sources)
     if boot.exit_code != 0:
         return boot
     return await session.execute(code)
@@ -504,20 +536,20 @@ class _RunnerSession:
         if rpc.error is not None:
             raise SandboxError(_format_rpc_error(f"mount_file({virtual_path})", rpc.error))
 
-    async def bootstrap(
-        self, trace_virtual_path: str, index_virtual_path: str
-    ) -> CodeExecutionResult:
-        """Load the trace + index inside Pyodide and prepare ``user_globals``.
+    async def bootstrap(self, sources: list[TraceDatasetSource]) -> CodeExecutionResult:
+        """Load every dataset file inside Pyodide and prepare ``user_globals``.
 
+        ``sources`` is the list of mounted ``TraceDatasetSource`` pairs;
+        the runner unions them into one ``TraceStore`` via ``load_many``.
         Returns a ``CodeExecutionResult``: the runner's ``halo_bootstrap``
-        wraps the load in stdout/stderr capture, so a Python-level
-        failure (malformed index, missing wheel) returns a result with
-        ``exit_code != 0`` and the traceback in stderr. RPC-level
-        failures (runner rejected the request) raise ``SandboxError``.
+        wraps the load in stdout/stderr capture, so a Python-level failure
+        (malformed index, missing wheel) returns a result with
+        ``exit_code != 0`` and the traceback in stderr. RPC-level failures
+        (runner rejected the request) raise ``SandboxError``.
         """
         rpc = await self._request(
             "bootstrap",
-            {"trace_path": trace_virtual_path, "index_path": index_virtual_path},
+            {"sources": [source.model_dump(mode="json") for source in sources]},
         )
         if rpc.error is not None:
             raise SandboxError(_format_rpc_error("bootstrap", rpc.error))

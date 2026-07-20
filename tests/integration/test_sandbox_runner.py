@@ -6,6 +6,7 @@ import pytest
 
 from engine.sandbox import sandbox as sandbox_module
 from engine.sandbox.sandbox import Sandbox
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.trace_index_builder import TraceIndexBuilder
 
@@ -18,9 +19,7 @@ async def _ready(tmp_path: Path, fixtures_dir: Path) -> tuple[Sandbox, Path, Pat
     trace_path = tmp_path / "traces.jsonl"
     trace_path.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
     index_path = tmp_path / "traces.jsonl.engine-index.jsonl"
-    await TraceIndexBuilder.ensure_index_exists(
-        trace_path=trace_path, config=TraceIndexConfig(index_path=index_path)
-    )
+    await TraceIndexBuilder.ensure_index_exists(trace_path=trace_path, config=TraceIndexConfig())
     return sandbox, trace_path, index_path
 
 
@@ -33,8 +32,7 @@ async def test_sandbox_runs_real_python_against_trace_store(
 
     result = await sandbox.run_python(
         code="print('count=', trace_store.trace_count)",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.exit_code == 0, (
@@ -61,8 +59,7 @@ async def test_sandbox_exposes_numpy_and_pandas_aliases(tmp_path: Path, fixtures
             "print('arr=', np.array([1, 2, 3]).sum())\n"
             "print('df=', pd.DataFrame({'a': [1, 2]}).shape)\n"
         ),
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.exit_code == 0, (
@@ -84,8 +81,7 @@ async def test_sandbox_uncaught_exception_surfaces_traceback(
 
     result = await sandbox.run_python(
         code="raise ValueError('boom')",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.exit_code != 0
@@ -133,7 +129,9 @@ async def test_sandbox_handles_multibyte_utf8_across_chunk_boundary(
         f"print('tail=', _payload[-6:])\n"
     )
 
-    result = await sandbox.run_python(code=code, trace_path=trace_path, index_path=index_path)
+    result = await sandbox.run_python(
+        code=code, sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)]
+    )
 
     assert result.exit_code == 0, (
         f"sandboxed run failed (exit={result.exit_code}):\n"
@@ -166,9 +164,50 @@ async def test_sandbox_timeout_kills_process(
 
     result = await sandbox.run_python(
         code="while True: pass",
-        trace_path=trace_path,
-        index_path=index_path,
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.timed_out is True
     assert result.exit_code != 0
+
+
+@pytest.mark.asyncio
+async def test_sandbox_trace_store_spans_multiple_files(tmp_path: Path, fixtures_dir: Path) -> None:
+    """A multi-file dataset must be fully visible inside ``run_code``.
+
+    The host builds one ``TraceStore`` over every file; the sandbox has
+    to load the same union, not just the primary file. Here the second
+    file's trace (``x-1111``) is only reachable if the union loaded, so
+    the count and the cross-file read both prove the sandbox didn't drop
+    the extra file.
+    """
+    sandbox = Sandbox.get()
+    if sandbox is None:
+        pytest.fail("Pyodide sandbox unavailable in CI; this must work for release.")
+
+    first_trace = tmp_path / "traces.jsonl"
+    first_trace.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
+    first_index = tmp_path / "traces.jsonl.engine-index.jsonl"
+    await TraceIndexBuilder.ensure_index_exists(trace_path=first_trace, config=TraceIndexConfig())
+    second_trace = tmp_path / "evals.jsonl"
+    second_trace.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+    second_index = tmp_path / "evals.jsonl.engine-index.jsonl"
+    await TraceIndexBuilder.ensure_index_exists(trace_path=second_trace, config=TraceIndexConfig())
+
+    result = await sandbox.run_python(
+        code=(
+            "print('count=', trace_store.trace_count)\n"
+            "print('second=', trace_store.view_trace('x-1111') is not None)"
+        ),
+        sources=[
+            TraceDatasetSource(trace_path=first_trace, index_path=first_index),
+            TraceDatasetSource(trace_path=second_trace, index_path=second_index),
+        ],
+    )
+
+    assert result.exit_code == 0, (
+        f"sandboxed run failed (exit={result.exit_code}, timed_out={result.timed_out}):\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert "count= 5" in result.stdout
+    assert "second= True" in result.stdout
