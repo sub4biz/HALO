@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import multiprocessing as mp
 import os
 from concurrent.futures import ProcessPoolExecutor
@@ -10,6 +11,23 @@ from pathlib import Path
 from engine.traces.models.canonical_span import SpanRecord
 from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.models.trace_index_models import TraceIndexMeta, TraceIndexRow
+
+
+def sidecar_index_path(trace_path: Path, index_dir: Path | None) -> Path:
+    """Where a trace file's sidecar index lives.
+
+    With no ``index_dir`` the index sits next to the trace as
+    ``<trace>.engine-index.jsonl``. With an ``index_dir`` set, every file's
+    index shares that one directory, so the name carries a hash of the
+    trace's full path — the basename alone would collide when two dataset
+    files in different directories share a filename, silently pairing one
+    file with another's byte offsets. The hash is deterministic in the
+    trace path, so a stable cache location keeps hitting the same index.
+    """
+    if index_dir is None:
+        return Path(str(trace_path) + ".engine-index.jsonl")
+    digest = hashlib.sha256(str(trace_path).encode("utf-8")).hexdigest()[:16]
+    return index_dir / f"{trace_path.name}.{digest}.engine-index.jsonl"
 
 
 def _available_cpus(*, max_workers: int = 8) -> int:
@@ -310,20 +328,18 @@ class TraceIndexBuilder:
     ) -> Path:
         """Return a usable index path, rebuilding when missing or stale.
 
-        When ``config.index_dir`` is set the index is a file named after the
-        trace inside that directory (so one dir serves a whole multi-file
-        dataset); otherwise it derives ``<trace>.engine-index.jsonl`` next
-        to the trace. The sidecar is a derived cache: any mismatch — missing
-        files, schema version drift, or a different
-        ``source_size``/``source_mtime_ns`` — is treated as staleness and
-        triggers a rebuild. ``build_index`` itself fails fast on requested
-        versions it does not know how to write.
+        When ``config.index_dir`` is set the index is a distinct file inside
+        that directory (so one dir serves a whole multi-file dataset — see
+        ``sidecar_index_path`` for the collision-safe naming); otherwise it
+        derives ``<trace>.engine-index.jsonl`` next to the trace. The sidecar
+        is a derived cache: any mismatch — missing files, schema version
+        drift, or a different ``source_size``/``source_mtime_ns`` — is
+        treated as staleness and triggers a rebuild. ``build_index`` itself
+        fails fast on requested versions it does not know how to write.
         """
+        index_path = sidecar_index_path(trace_path, config.index_dir)
         if config.index_dir is not None:
             config.index_dir.mkdir(parents=True, exist_ok=True)
-            index_path = config.index_dir / f"{trace_path.name}.engine-index.jsonl"
-        else:
-            index_path = Path(str(trace_path) + ".engine-index.jsonl")
         meta_path = cls._meta_path_for(index_path)
 
         current_size, current_mtime_ns = cls._fingerprint_trace_file(trace_path)

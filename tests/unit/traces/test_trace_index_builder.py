@@ -7,7 +7,7 @@ import pytest
 
 from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.models.trace_index_models import TraceIndexMeta, TraceIndexRow
-from engine.traces.trace_index_builder import TraceIndexBuilder
+from engine.traces.trace_index_builder import TraceIndexBuilder, sidecar_index_path
 
 
 def _write_meta(
@@ -46,7 +46,7 @@ async def test_ensure_index_exists_uses_index_dir(tmp_path: Path) -> None:
     trace_path.write_text("")
     index_dir = tmp_path / "indexes"
     index_dir.mkdir()
-    expected_index = index_dir / "t.jsonl.engine-index.jsonl"
+    expected_index = sidecar_index_path(trace_path, index_dir)
     expected_meta = TraceIndexBuilder._meta_path_for(expected_index)
     expected_index.write_text("")
     _write_meta(expected_meta, trace_path=trace_path)
@@ -56,6 +56,30 @@ async def test_ensure_index_exists_uses_index_dir(tmp_path: Path) -> None:
         config=TraceIndexConfig(index_dir=index_dir),
     )
     assert result_path == expected_index
+
+
+def test_sidecar_index_path_avoids_basename_collisions(tmp_path: Path) -> None:
+    """Two files with the same basename in different dirs get distinct index
+    files inside a shared index_dir (basename alone would collide)."""
+    index_dir = tmp_path / "indexes"
+    a = tmp_path / "a" / "traces.jsonl"
+    b = tmp_path / "b" / "traces.jsonl"
+
+    index_a = sidecar_index_path(a, index_dir)
+    index_b = sidecar_index_path(b, index_dir)
+
+    assert index_a != index_b
+    assert index_a.parent == index_dir
+    assert index_b.parent == index_dir
+    assert index_a.name.startswith("traces.jsonl.")
+    assert index_a.name.endswith(".engine-index.jsonl")
+    # Deterministic: same path → same index file (stable caching).
+    assert sidecar_index_path(a, index_dir) == index_a
+
+
+def test_sidecar_index_path_derives_next_to_trace_without_index_dir(tmp_path: Path) -> None:
+    trace_path = tmp_path / "traces.jsonl"
+    assert sidecar_index_path(trace_path, None) == Path(str(trace_path) + ".engine-index.jsonl")
 
 
 @pytest.mark.asyncio

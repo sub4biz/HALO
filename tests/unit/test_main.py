@@ -221,6 +221,7 @@ async def test_resolve_trace_sources_index_dir_holds_every_file_index(
     trace, named after it, all inside that directory."""
     from engine.main import _resolve_trace_sources
     from engine.traces.models.trace_index_config import TraceIndexConfig
+    from engine.traces.trace_index_builder import sidecar_index_path
 
     first = tmp_path / "conversations.jsonl"
     first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
@@ -232,17 +233,16 @@ async def test_resolve_trace_sources_index_dir_holds_every_file_index(
         [first, second], config=TraceIndexConfig(index_dir=index_dir)
     )
 
+    first_index = sidecar_index_path(first, index_dir)
+    second_index = sidecar_index_path(second, index_dir)
     assert sources == [
-        TraceDatasetSource(
-            trace_path=first, index_path=index_dir / "conversations.jsonl.engine-index.jsonl"
-        ),
-        TraceDatasetSource(
-            trace_path=second, index_path=index_dir / "evals.jsonl.engine-index.jsonl"
-        ),
+        TraceDatasetSource(trace_path=first, index_path=first_index),
+        TraceDatasetSource(trace_path=second, index_path=second_index),
     ]
-    # Both indexes are real files in the one directory.
-    assert (index_dir / "conversations.jsonl.engine-index.jsonl").is_file()
-    assert (index_dir / "evals.jsonl.engine-index.jsonl").is_file()
+    # Both indexes are distinct real files in the one directory.
+    assert first_index != second_index
+    assert first_index.parent == index_dir and second_index.parent == index_dir
+    assert first_index.is_file() and second_index.is_file()
 
 
 @pytest.mark.asyncio
