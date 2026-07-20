@@ -44,16 +44,16 @@ def halo_bootstrap(sources_json: str) -> dict[str, Any]:
     """Build the user-facing globals dict from the mounted dataset files.
 
     Runs once per sandbox session, before the first ``halo_execute``.
-    ``sources_json`` is a JSON array of ``{"trace_path", "index_path"}``
-    objects — the mounted virtual paths of every file in the dataset.
-    Imports numpy/pandas plus the real ``engine.traces.trace_store`` (the
-    runner stages the host's ``engine`` package source into ``/halo/`` at
-    boot, which is why the import works in WASM), unions the files into
-    one ``TraceStore`` via ``load_many``, and stashes the resulting
-    ``trace_store`` plus convenience aliases. Returns the standard capture
-    envelope so a setup failure (malformed index, missing dependency)
-    surfaces with a real traceback rather than a blank ``halo_execute``
-    failure later.
+    ``sources_json`` is the JSON encoding of a ``list[TraceDatasetSource]``
+    — the mounted virtual paths of every file in the dataset. Imports
+    numpy/pandas plus the real ``engine.traces.trace_store`` (the runner
+    stages the host's ``engine`` package source into ``/halo/`` at boot,
+    which is why the import works in WASM), validates the sources back
+    into the shared model, unions the files into one ``TraceStore`` via
+    ``load_many``, and stashes the resulting ``trace_store`` plus
+    convenience aliases. Returns the standard capture envelope so a setup
+    failure (malformed index, missing dependency) surfaces with a real
+    traceback rather than a blank ``halo_execute`` failure later.
     """
     global _bootstrapped
     buf_stdout = io.StringIO()
@@ -69,16 +69,17 @@ def halo_bootstrap(sources_json: str) -> dict[str, Any]:
         if "/halo" not in sys.path:
             sys.path.insert(0, "/halo")
 
-        import json
-
         import numpy
         import pandas
 
+        from engine.traces.models.trace_dataset_source import (
+            TRACE_DATASET_SOURCES_ADAPTER,
+        )
         from engine.traces.trace_store import TraceStore
 
         sources = [
-            (Path(source["trace_path"]), Path(source["index_path"]))
-            for source in json.loads(sources_json)
+            (Path(source.trace_path), Path(source.index_path))
+            for source in TRACE_DATASET_SOURCES_ADAPTER.validate_json(sources_json)
         ]
         trace_store = TraceStore.load_many(sources)
         _user_globals.clear()

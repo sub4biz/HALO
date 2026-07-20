@@ -10,6 +10,7 @@ import pytest
 from engine.sandbox import sandbox as sandbox_module
 from engine.sandbox.models import CodeExecutionResult
 from engine.sandbox.sandbox import Sandbox
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 
 
 def _fake_sandbox(tmp_path: Path) -> Sandbox:
@@ -175,7 +176,7 @@ def _install_session_stub(
             return b""
 
         async def mount(self, _host: Path, _virtual: str) -> None: ...
-        async def bootstrap(self, _sources: list[tuple[str, str]]) -> CodeExecutionResult:
+        async def bootstrap(self, _sources: list[TraceDatasetSource]) -> CodeExecutionResult:
             return CodeExecutionResult(exit_code=0, stdout="", stderr="", timed_out=False)
 
         async def execute(self, _code: str) -> CodeExecutionResult:
@@ -278,7 +279,7 @@ async def test_run_python_returns_sad_result_on_unexpected_exception(
             return b""
 
         async def mount(self, _h: Path, _v: str) -> None: ...
-        async def bootstrap(self, _t: str, _i: str) -> CodeExecutionResult:
+        async def bootstrap(self, _sources: list[TraceDatasetSource]) -> CodeExecutionResult:
             return CodeExecutionResult(exit_code=0, stdout="", stderr="", timed_out=False)
 
         async def execute(self, _c: str) -> CodeExecutionResult:
@@ -324,7 +325,7 @@ async def test_run_python_does_not_swallow_cancellation(
             return b""
 
         async def mount(self, _h: Path, _v: str) -> None: ...
-        async def bootstrap(self, _t: str, _i: str) -> CodeExecutionResult:
+        async def bootstrap(self, _sources: list[TraceDatasetSource]) -> CodeExecutionResult:
             return CodeExecutionResult(exit_code=0, stdout="", stderr="", timed_out=False)
 
         async def execute(self, _c: str) -> CodeExecutionResult:

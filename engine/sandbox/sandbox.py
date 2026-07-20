@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import ClassVar, TypedDict
 
 from engine.sandbox.models import CodeExecutionResult
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 
 _logger = logging.getLogger(__name__)
 
@@ -353,13 +354,15 @@ async def _run_protocol(
     them together. Lifecycle (spawn, shutdown, kill, drain) belongs to
     ``Sandbox.run_python`` and the session itself.
     """
-    virtual_sources: list[tuple[str, str]] = []
+    virtual_sources: list[TraceDatasetSource] = []
     for source_index, (trace, index) in enumerate(sources):
         trace_virtual = _trace_virtual_path(source_index)
         index_virtual = _index_virtual_path(source_index)
         await session.mount(trace, trace_virtual)
         await session.mount(index, index_virtual)
-        virtual_sources.append((trace_virtual, index_virtual))
+        virtual_sources.append(
+            TraceDatasetSource(trace_path=trace_virtual, index_path=index_virtual)
+        )
     boot = await session.bootstrap(virtual_sources)
     if boot.exit_code != 0:
         return boot
@@ -525,26 +528,20 @@ class _RunnerSession:
         if rpc.error is not None:
             raise SandboxError(_format_rpc_error(f"mount_file({virtual_path})", rpc.error))
 
-    async def bootstrap(self, sources: list[tuple[str, str]]) -> CodeExecutionResult:
+    async def bootstrap(self, sources: list[TraceDatasetSource]) -> CodeExecutionResult:
         """Load every dataset file inside Pyodide and prepare ``user_globals``.
 
-        ``sources`` is the list of mounted ``(trace_virtual_path,
-        index_virtual_path)`` pairs; the runner unions them into one
-        ``TraceStore`` via ``load_many``. Returns a ``CodeExecutionResult``:
-        the runner's ``halo_bootstrap`` wraps the load in stdout/stderr
-        capture, so a Python-level failure (malformed index, missing
-        wheel) returns a result with ``exit_code != 0`` and the traceback
-        in stderr. RPC-level failures (runner rejected the request) raise
-        ``SandboxError``.
+        ``sources`` is the list of mounted ``TraceDatasetSource`` pairs;
+        the runner unions them into one ``TraceStore`` via ``load_many``.
+        Returns a ``CodeExecutionResult``: the runner's ``halo_bootstrap``
+        wraps the load in stdout/stderr capture, so a Python-level failure
+        (malformed index, missing wheel) returns a result with
+        ``exit_code != 0`` and the traceback in stderr. RPC-level failures
+        (runner rejected the request) raise ``SandboxError``.
         """
         rpc = await self._request(
             "bootstrap",
-            {
-                "sources": [
-                    {"trace_path": trace_virtual_path, "index_path": index_virtual_path}
-                    for trace_virtual_path, index_virtual_path in sources
-                ]
-            },
+            {"sources": [source.model_dump() for source in sources]},
         )
         if rpc.error is not None:
             raise SandboxError(_format_rpc_error("bootstrap", rpc.error))
