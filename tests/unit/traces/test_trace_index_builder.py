@@ -51,7 +51,8 @@ async def test_ensure_index_exists_explicit_override(tmp_path: Path) -> None:
 
     result_path = await TraceIndexBuilder.ensure_index_exists(
         trace_path=trace_path,
-        config=TraceIndexConfig(index_path=custom_index),
+        config=TraceIndexConfig(),
+        index_path=custom_index,
     )
     assert result_path == custom_index
 

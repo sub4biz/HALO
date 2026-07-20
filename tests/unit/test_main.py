@@ -15,7 +15,7 @@ from engine.engine_config import EngineConfig
 from engine.main import _drive_sync
 from engine.model_config import ModelConfig
 from engine.models.messages import AgentMessage
-from engine.traces.models.trace_dataset_source import TraceDatasetSource
+from engine.traces.models.trace_dataset_source import TraceDataset, TraceDatasetSource
 from tests._sdk_events import assistant_message_event
 from tests.probes.probe_kit import FakeRunner
 
@@ -40,7 +40,7 @@ def test_public_entrypoints_exist_and_are_async() -> None:
 def test_async_signatures_match() -> None:
     for fn in (engine_main.stream_engine_async, engine_main.run_engine_async):
         params = list(inspect.signature(fn).parameters)
-        assert params[:3] == ["messages", "engine_config", "trace_paths"]
+        assert params[:3] == ["messages", "engine_config", "datasets"]
 
 
 def test_drive_sync_runs_finally_on_early_break() -> None:
@@ -193,10 +193,10 @@ async def test_engine_wires_configured_client_via_run_config(
 
 
 @pytest.mark.asyncio
-async def test_resolve_trace_sources_single_file_honors_explicit_index(
+async def test_resolve_trace_sources_pins_per_file_index_when_given(
     tmp_path: Path, fixtures_dir: Path
 ) -> None:
-    """A single-file dataset may pin its sidecar index location."""
+    """A dataset file's ``index_path`` pins that file's sidecar location."""
     from engine.main import _resolve_trace_sources
     from engine.traces.models.trace_index_config import TraceIndexConfig
 
@@ -204,37 +204,38 @@ async def test_resolve_trace_sources_single_file_honors_explicit_index(
     trace.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
     index = tmp_path / "pinned-index.jsonl"
 
-    sources = await _resolve_trace_sources([trace], config=TraceIndexConfig(index_path=index))
+    sources = await _resolve_trace_sources(
+        [TraceDataset(trace_path=trace, index_path=index)], config=TraceIndexConfig()
+    )
 
     assert sources == [TraceDatasetSource(trace_path=trace, index_path=index)]
 
 
 @pytest.mark.asyncio
-async def test_resolve_trace_sources_multi_file_derives_per_file_indexes(
+async def test_resolve_trace_sources_derives_index_when_unpinned(
     tmp_path: Path, fixtures_dir: Path
 ) -> None:
-    """Each file in a multi-file dataset gets its own derived sidecar index."""
+    """An unpinned dataset file derives ``<trace>.engine-index.jsonl``."""
     from engine.main import _resolve_trace_sources
     from engine.traces.models.trace_index_config import TraceIndexConfig
 
-    first = tmp_path / "conversations.jsonl"
-    first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
-    second = tmp_path / "evals.jsonl"
-    second.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+    trace = tmp_path / "traces.jsonl"
+    trace.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
 
-    sources = await _resolve_trace_sources([first, second], config=TraceIndexConfig())
+    sources = await _resolve_trace_sources(
+        [TraceDataset(trace_path=trace)], config=TraceIndexConfig()
+    )
 
     assert sources == [
-        TraceDatasetSource(trace_path=first, index_path=Path(str(first) + ".engine-index.jsonl")),
-        TraceDatasetSource(trace_path=second, index_path=Path(str(second) + ".engine-index.jsonl")),
+        TraceDatasetSource(trace_path=trace, index_path=Path(str(trace) + ".engine-index.jsonl"))
     ]
 
 
 @pytest.mark.asyncio
-async def test_resolve_trace_sources_rejects_explicit_index_for_multi_file(
+async def test_resolve_trace_sources_multi_file_mixes_pinned_and_derived(
     tmp_path: Path, fixtures_dir: Path
 ) -> None:
-    """A single pinned index_path cannot serve multiple files — fail fast."""
+    """Each file resolves its own index — pinned or derived — independently."""
     from engine.main import _resolve_trace_sources
     from engine.traces.models.trace_index_config import TraceIndexConfig
 
@@ -242,36 +243,47 @@ async def test_resolve_trace_sources_rejects_explicit_index_for_multi_file(
     first.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
     second = tmp_path / "evals.jsonl"
     second.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
+    second_index = tmp_path / "evals-index.jsonl"
 
-    with pytest.raises(ValueError, match="multi-file dataset"):
-        await _resolve_trace_sources(
-            [first, second],
-            config=TraceIndexConfig(index_path=tmp_path / "shared-index.jsonl"),
-        )
+    sources = await _resolve_trace_sources(
+        [
+            TraceDataset(trace_path=first),
+            TraceDataset(trace_path=second, index_path=second_index),
+        ],
+        config=TraceIndexConfig(),
+    )
+
+    assert sources == [
+        TraceDatasetSource(trace_path=first, index_path=Path(str(first) + ".engine-index.jsonl")),
+        TraceDatasetSource(trace_path=second, index_path=second_index),
+    ]
 
 
 @pytest.mark.asyncio
-async def test_resolve_trace_sources_requires_at_least_one_path() -> None:
+async def test_resolve_trace_sources_requires_at_least_one_file() -> None:
     """An empty dataset is a caller bug — fail fast rather than load nothing."""
     from engine.main import _resolve_trace_sources
     from engine.traces.models.trace_index_config import TraceIndexConfig
 
-    with pytest.raises(ValueError, match="at least one trace path"):
+    with pytest.raises(ValueError, match="at least one dataset file"):
         await _resolve_trace_sources([], config=TraceIndexConfig())
 
 
-def test_as_trace_path_list_wraps_a_bare_path() -> None:
-    """The public-edge single-path convenience normalizes to a one-item list."""
-    from engine.main import _as_trace_path_list
+def test_as_trace_datasets_wraps_a_bare_path() -> None:
+    """The public-edge single-path convenience becomes a one-item dataset list."""
+    from engine.main import _as_trace_datasets
 
     one = Path("/data/traces.jsonl")
-    assert _as_trace_path_list(one) == [one]
+    assert _as_trace_datasets(one) == [TraceDataset(trace_path=one)]
 
 
-def test_as_trace_path_list_passes_a_sequence_through() -> None:
-    """A list (or tuple) of paths comes back as a list unchanged."""
-    from engine.main import _as_trace_path_list
+def test_as_trace_datasets_passes_a_sequence_through() -> None:
+    """A sequence of datasets comes back as a list unchanged."""
+    from engine.main import _as_trace_datasets
 
-    paths = [Path("/data/a.jsonl"), Path("/data/b.jsonl")]
-    assert _as_trace_path_list(paths) == paths
-    assert _as_trace_path_list(tuple(paths)) == paths
+    datasets = [
+        TraceDataset(trace_path=Path("/data/a.jsonl")),
+        TraceDataset(trace_path=Path("/data/b.jsonl"), index_path=Path("/idx/b.jsonl")),
+    ]
+    assert _as_trace_datasets(datasets) == datasets
+    assert _as_trace_datasets(tuple(datasets)) == datasets

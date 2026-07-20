@@ -307,15 +307,19 @@ class TraceIndexBuilder:
         cls,
         trace_path: Path,
         config: TraceIndexConfig,
+        index_path: Path | None = None,
     ) -> Path:
         """Return a usable index path, rebuilding when missing or stale.
 
-        The sidecar is a derived cache: any mismatch — missing files, schema
-        version drift, or a different ``source_size``/``source_mtime_ns`` — is
-        treated as staleness and triggers a rebuild. ``build_index`` itself
-        fails fast on requested versions it does not know how to write.
+        ``index_path`` pins the sidecar location for this one file; when
+        ``None`` it derives ``<trace>.engine-index.jsonl`` next to the
+        trace. The sidecar is a derived cache: any mismatch — missing
+        files, schema version drift, or a different
+        ``source_size``/``source_mtime_ns`` — is treated as staleness and
+        triggers a rebuild. ``build_index`` itself fails fast on requested
+        versions it does not know how to write.
         """
-        index_path = config.index_path or Path(str(trace_path) + ".engine-index.jsonl")
+        index_path = index_path or Path(str(trace_path) + ".engine-index.jsonl")
         meta_path = cls._meta_path_for(index_path)
 
         current_size, current_mtime_ns = cls._fingerprint_trace_file(trace_path)

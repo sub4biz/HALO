@@ -20,7 +20,7 @@ async def _ready(tmp_path: Path, fixtures_dir: Path) -> tuple[Sandbox, Path, Pat
     trace_path.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
     index_path = tmp_path / "traces.jsonl.engine-index.jsonl"
     await TraceIndexBuilder.ensure_index_exists(
-        trace_path=trace_path, config=TraceIndexConfig(index_path=index_path)
+        trace_path=trace_path, config=TraceIndexConfig(), index_path=index_path
     )
     return sandbox, trace_path, index_path
 
@@ -191,13 +191,13 @@ async def test_sandbox_trace_store_spans_multiple_files(tmp_path: Path, fixtures
     first_trace.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
     first_index = tmp_path / "traces.jsonl.engine-index.jsonl"
     await TraceIndexBuilder.ensure_index_exists(
-        trace_path=first_trace, config=TraceIndexConfig(index_path=first_index)
+        trace_path=first_trace, config=TraceIndexConfig(), index_path=first_index
     )
     second_trace = tmp_path / "evals.jsonl"
     second_trace.write_bytes((fixtures_dir / "tiny_traces_second_file.jsonl").read_bytes())
     second_index = tmp_path / "evals.jsonl.engine-index.jsonl"
     await TraceIndexBuilder.ensure_index_exists(
-        trace_path=second_trace, config=TraceIndexConfig(index_path=second_index)
+        trace_path=second_trace, config=TraceIndexConfig(), index_path=second_index
     )
 
     result = await sandbox.run_python(

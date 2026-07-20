@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import BaseModel, ConfigDict
 
 
 class TraceIndexConfig(BaseModel):
-    """Sidecar index location and schema version. Index is build-once: existing files are reused as-is."""
+    """Dataset-wide index config. Index is build-once: existing files are reused as-is.
+
+    The per-file index *location* is not here — it belongs on each
+    ``TraceDataset`` (a sidecar location is a per-file property, not a
+    dataset-wide one), so this only carries settings that apply uniformly
+    across every file.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    index_path: Path | None = None
     schema_version: int = 2
