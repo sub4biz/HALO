@@ -224,15 +224,15 @@ class Sandbox:
         self,
         *,
         code: str,
-        sources: Sequence[tuple[Path, Path]],
+        sources: Sequence[TraceDatasetSource],
     ) -> CodeExecutionResult:
         """Run ``code`` in the WASM sandbox; returns a typed result regardless of pass/fail/timeout.
 
-        ``sources`` is the dataset's ``(trace_path, index_path)`` pairs —
-        one for a single-file dataset, several when the dataset spans
-        multiple files. The in-Pyodide ``trace_store`` is built over the
-        whole union (via ``TraceStore.load_many``), so user code sees the
-        same traces the host tools do.
+        ``sources`` is the dataset's files — one ``TraceDatasetSource`` for
+        a single-file dataset, several when the dataset spans multiple
+        files. The in-Pyodide ``trace_store`` is built over the whole union
+        (via ``TraceStore.load_many``), so user code sees the same traces
+        the host tools do.
 
         Mounting:
           - The runner.js + sibling .py files + Deno cache are read-only.
@@ -244,9 +244,17 @@ class Sandbox:
             tells the bootstrap which mount points to load.
         """
         if not sources:
-            raise ValueError("run_python requires at least one (trace_path, index_path) source")
-        resolved = [(trace.resolve(), index.resolve()) for trace, index in sources]
-        extra_read_paths = [path for pair in resolved for path in pair]
+            raise ValueError("run_python requires at least one TraceDatasetSource")
+        resolved = [
+            TraceDatasetSource(
+                trace_path=source.trace_path.resolve(),
+                index_path=source.index_path.resolve(),
+            )
+            for source in sources
+        ]
+        extra_read_paths = [
+            path for source in resolved for path in (source.trace_path, source.index_path)
+        ]
         session = _RunnerSession(argv=self._build_argv(extra_read_paths=extra_read_paths))
         try:
             await session.start()
@@ -343,7 +351,7 @@ class Sandbox:
 async def _run_protocol(
     session: "_RunnerSession",
     *,
-    sources: list[tuple[Path, Path]],
+    sources: list[TraceDatasetSource],
     code: str,
 ) -> CodeExecutionResult:
     """Mount → bootstrap → execute against a started session.
@@ -355,13 +363,13 @@ async def _run_protocol(
     ``Sandbox.run_python`` and the session itself.
     """
     virtual_sources: list[TraceDatasetSource] = []
-    for source_index, (trace, index) in enumerate(sources):
+    for source_index, source in enumerate(sources):
         trace_virtual = _trace_virtual_path(source_index)
         index_virtual = _index_virtual_path(source_index)
-        await session.mount(trace, trace_virtual)
-        await session.mount(index, index_virtual)
+        await session.mount(source.trace_path, trace_virtual)
+        await session.mount(source.index_path, index_virtual)
         virtual_sources.append(
-            TraceDatasetSource(trace_path=trace_virtual, index_path=index_virtual)
+            TraceDatasetSource(trace_path=Path(trace_virtual), index_path=Path(index_virtual))
         )
     boot = await session.bootstrap(virtual_sources)
     if boot.exit_code != 0:
@@ -541,7 +549,7 @@ class _RunnerSession:
         """
         rpc = await self._request(
             "bootstrap",
-            {"sources": [source.model_dump() for source in sources]},
+            {"sources": [source.model_dump(mode="json") for source in sources]},
         )
         if rpc.error is not None:
             raise SandboxError(_format_rpc_error("bootstrap", rpc.error))

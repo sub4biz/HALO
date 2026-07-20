@@ -6,6 +6,7 @@ import pytest
 
 from engine.sandbox import sandbox as sandbox_module
 from engine.sandbox.sandbox import Sandbox
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.trace_index_builder import TraceIndexBuilder
 
@@ -33,7 +34,7 @@ async def test_sandbox_runs_real_python_against_trace_store(
 
     result = await sandbox.run_python(
         code="print('count=', trace_store.trace_count)",
-        sources=[(trace_path, index_path)],
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.exit_code == 0, (
@@ -60,7 +61,7 @@ async def test_sandbox_exposes_numpy_and_pandas_aliases(tmp_path: Path, fixtures
             "print('arr=', np.array([1, 2, 3]).sum())\n"
             "print('df=', pd.DataFrame({'a': [1, 2]}).shape)\n"
         ),
-        sources=[(trace_path, index_path)],
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.exit_code == 0, (
@@ -82,7 +83,7 @@ async def test_sandbox_uncaught_exception_surfaces_traceback(
 
     result = await sandbox.run_python(
         code="raise ValueError('boom')",
-        sources=[(trace_path, index_path)],
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.exit_code != 0
@@ -130,7 +131,9 @@ async def test_sandbox_handles_multibyte_utf8_across_chunk_boundary(
         f"print('tail=', _payload[-6:])\n"
     )
 
-    result = await sandbox.run_python(code=code, sources=[(trace_path, index_path)])
+    result = await sandbox.run_python(
+        code=code, sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)]
+    )
 
     assert result.exit_code == 0, (
         f"sandboxed run failed (exit={result.exit_code}):\n"
@@ -163,7 +166,7 @@ async def test_sandbox_timeout_kills_process(
 
     result = await sandbox.run_python(
         code="while True: pass",
-        sources=[(trace_path, index_path)],
+        sources=[TraceDatasetSource(trace_path=trace_path, index_path=index_path)],
     )
 
     assert result.timed_out is True
@@ -202,7 +205,10 @@ async def test_sandbox_trace_store_spans_multiple_files(tmp_path: Path, fixtures
             "print('count=', trace_store.trace_count)\n"
             "print('second=', trace_store.view_trace('x-1111') is not None)"
         ),
-        sources=[(first_trace, first_index), (second_trace, second_index)],
+        sources=[
+            TraceDatasetSource(trace_path=first_trace, index_path=first_index),
+            TraceDatasetSource(trace_path=second_trace, index_path=second_index),
+        ],
     )
 
     assert result.exit_code == 0, (

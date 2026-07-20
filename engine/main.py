@@ -26,6 +26,7 @@ from engine.sandbox.sandbox import Sandbox
 from engine.telemetry import resolve_run_id, setup_telemetry
 from engine.telemetry.tracing import halo_agent_span
 from engine.tools.subagent_tool_factory import build_root_sdk_agent
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.trace_index_builder import TraceIndexBuilder
 from engine.traces.trace_store import TraceStore
@@ -36,8 +37,8 @@ logger = logging.getLogger(__name__)
 
 async def _resolve_trace_sources(
     trace_path: Path | Sequence[Path], *, config: TraceIndexConfig
-) -> list[tuple[Path, Path]]:
-    """Build the ``(trace_path, index_path)`` pairs for the dataset's files.
+) -> list[TraceDatasetSource]:
+    """Build the ``TraceDatasetSource`` list for the dataset's files.
 
     A dataset may span one or many JSONL files. Each file gets its own
     sidecar index (``ensure_index_exists`` derives ``<trace>.engine-index.jsonl``
@@ -53,13 +54,13 @@ async def _resolve_trace_sources(
             "sidecar path can't serve multiple files. Leave it unset so each file "
             "derives its own index from its trace path."
         )
-    sources: list[tuple[Path, Path]] = []
+    sources: list[TraceDatasetSource] = []
     for path in trace_paths:
         index_path = await TraceIndexBuilder.ensure_index_exists(
             trace_path=path,
             config=config,
         )
-        sources.append((path, index_path))
+        sources.append(TraceDatasetSource(trace_path=path, index_path=index_path))
     return sources
 
 

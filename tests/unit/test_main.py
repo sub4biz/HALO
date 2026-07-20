@@ -15,6 +15,7 @@ from engine.engine_config import EngineConfig
 from engine.main import _drive_sync
 from engine.model_config import ModelConfig
 from engine.models.messages import AgentMessage
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from tests._sdk_events import assistant_message_event
 from tests.probes.probe_kit import FakeRunner
 
@@ -205,7 +206,7 @@ async def test_resolve_trace_sources_single_file_honors_explicit_index(
 
     sources = await _resolve_trace_sources(trace, config=TraceIndexConfig(index_path=index))
 
-    assert sources == [(trace, index)]
+    assert sources == [TraceDatasetSource(trace_path=trace, index_path=index)]
 
 
 @pytest.mark.asyncio
@@ -224,8 +225,8 @@ async def test_resolve_trace_sources_multi_file_derives_per_file_indexes(
     sources = await _resolve_trace_sources([first, second], config=TraceIndexConfig())
 
     assert sources == [
-        (first, Path(str(first) + ".engine-index.jsonl")),
-        (second, Path(str(second) + ".engine-index.jsonl")),
+        TraceDatasetSource(trace_path=first, index_path=Path(str(first) + ".engine-index.jsonl")),
+        TraceDatasetSource(trace_path=second, index_path=Path(str(second) + ".engine-index.jsonl")),
     ]
 
 

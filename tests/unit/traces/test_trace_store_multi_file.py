@@ -13,19 +13,22 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from engine.traces.models.trace_index_config import TraceIndexConfig
 from engine.traces.models.trace_query_models import TraceFilters
 from engine.traces.trace_index_builder import TraceIndexBuilder
 from engine.traces.trace_store import TraceStore
 
 
-async def _source(tmp_path: Path, fixtures_dir: Path, fixture: str, name: str) -> tuple[Path, Path]:
+async def _source(
+    tmp_path: Path, fixtures_dir: Path, fixture: str, name: str
+) -> TraceDatasetSource:
     trace_path = tmp_path / name
     trace_path.write_bytes((fixtures_dir / fixture).read_bytes())
     index_path = await TraceIndexBuilder.ensure_index_exists(
         trace_path=trace_path, config=TraceIndexConfig()
     )
-    return trace_path, index_path
+    return TraceDatasetSource(trace_path=trace_path, index_path=index_path)
 
 
 @pytest_asyncio.fixture
@@ -87,11 +90,9 @@ async def test_load_many_requires_a_source() -> None:
 
 @pytest.mark.asyncio
 async def test_single_file_load_unchanged(tmp_path: Path, fixtures_dir: Path) -> None:
-    trace_path, index_path = await _source(
-        tmp_path, fixtures_dir, "tiny_traces.jsonl", "traces.jsonl"
-    )
-    store = TraceStore.load(trace_path=trace_path, index_path=index_path)
+    source = await _source(tmp_path, fixtures_dir, "tiny_traces.jsonl", "traces.jsonl")
+    store = TraceStore.load(trace_path=source.trace_path, index_path=source.index_path)
     assert store.trace_count == 3
-    assert store.trace_path == trace_path
-    assert store.index_path == index_path
-    assert store.trace_paths == [trace_path]
+    assert store.trace_path == source.trace_path
+    assert store.index_path == source.index_path
+    assert store.trace_paths == [source.trace_path]

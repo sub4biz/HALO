@@ -30,7 +30,6 @@ from __future__ import annotations
 import io
 import sys
 import traceback
-from pathlib import Path
 from typing import Any
 
 # Module-state pair owned by ``halo_bootstrap`` and read by ``halo_execute``.
@@ -77,10 +76,7 @@ def halo_bootstrap(sources_json: str) -> dict[str, Any]:
         )
         from engine.traces.trace_store import TraceStore
 
-        sources = [
-            (Path(source.trace_path), Path(source.index_path))
-            for source in TRACE_DATASET_SOURCES_ADAPTER.validate_json(sources_json)
-        ]
+        sources = TRACE_DATASET_SOURCES_ADAPTER.validate_json(sources_json)
         trace_store = TraceStore.load_many(sources)
         _user_globals.clear()
         _user_globals.update(

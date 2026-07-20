@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
 from engine.traces.models.canonical_span import SpanRecord
+from engine.traces.models.trace_dataset_source import TraceDatasetSource
 from engine.traces.models.trace_index_models import TraceIndexRow
 
 if TYPE_CHECKING:
@@ -190,7 +191,9 @@ class TraceStore:
     def __init__(self, trace_path: Path, index_path: Path, rows: list[TraceIndexRow]) -> None:
         """Hold one file's paths plus its in-memory index rows; prefer ``load`` /
         ``load_many`` for constructing from disk."""
-        self._sources: list[tuple[Path, Path]] = [(trace_path, index_path)]
+        self._sources: list[TraceDatasetSource] = [
+            TraceDatasetSource(trace_path=trace_path, index_path=index_path)
+        ]
         self._rows = rows
         self._rows_by_id: dict[str, TraceIndexRow] = {r.trace_id: r for r in rows}
         self._path_by_trace_id: dict[str, Path] = {r.trace_id: trace_path for r in rows}
@@ -203,8 +206,8 @@ class TraceStore:
         return cls(trace_path=trace_path, index_path=index_path, rows=rows)
 
     @classmethod
-    def load_many(cls, sources: "list[tuple[Path, Path]]") -> "TraceStore":
-        """Construct one store over several ``(trace_path, index_path)`` files.
+    def load_many(cls, sources: list[TraceDatasetSource]) -> "TraceStore":
+        """Construct one store over several dataset files.
 
         The files form a single logical dataset; a trace id appearing in
         more than one file raises ``ValueError`` — cross-file traces are
@@ -212,22 +215,22 @@ class TraceStore:
         another's would corrupt every downstream read.
         """
         if not sources:
-            raise ValueError("load_many requires at least one (trace_path, index_path) source")
-        first_trace_path, first_index_path = sources[0]
-        store = cls.load(trace_path=first_trace_path, index_path=first_index_path)
-        for trace_path, index_path in sources[1:]:
-            raw = index_path.read_text().splitlines()
+            raise ValueError("load_many requires at least one TraceDatasetSource")
+        first = sources[0]
+        store = cls.load(trace_path=first.trace_path, index_path=first.index_path)
+        for source in sources[1:]:
+            raw = source.index_path.read_text().splitlines()
             rows = [TraceIndexRow.model_validate_json(line) for line in raw if line]
             for row in rows:
                 if row.trace_id in store._rows_by_id:
                     raise ValueError(
                         f"trace_id {row.trace_id!r} appears in more than one dataset file "
-                        f"({store._path_by_trace_id[row.trace_id]} and {trace_path})"
+                        f"({store._path_by_trace_id[row.trace_id]} and {source.trace_path})"
                     )
                 store._rows.append(row)
                 store._rows_by_id[row.trace_id] = row
-                store._path_by_trace_id[row.trace_id] = trace_path
-            store._sources.append((trace_path, index_path))
+                store._path_by_trace_id[row.trace_id] = source.trace_path
+            store._sources.append(source)
         return store
 
     def _trace_file_for(self, trace_id: str) -> Path:
@@ -242,21 +245,21 @@ class TraceStore:
     @property
     def trace_path(self) -> Path:
         """The first (primary) JSONL path this store reads spans from."""
-        return self._sources[0][0]
+        return self._sources[0].trace_path
 
     @property
     def trace_paths(self) -> list[Path]:
         """Every JSONL file in the dataset, in load order."""
-        return [trace_path for trace_path, _ in self._sources]
+        return [source.trace_path for source in self._sources]
 
     @property
     def index_path(self) -> Path:
         """The first (primary) sidecar index path this store was loaded from."""
-        return self._sources[0][1]
+        return self._sources[0].index_path
 
     @property
-    def sources(self) -> list[tuple[Path, Path]]:
-        """Every ``(trace_path, index_path)`` pair this store reads, in load order.
+    def sources(self) -> list[TraceDatasetSource]:
+        """Every dataset file this store reads, in load order.
 
         Consumers that stand up their own store over the same dataset
         (e.g. the sandbox loading a ``TraceStore`` inside Pyodide) must
