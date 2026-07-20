@@ -41,20 +41,21 @@ async def test_ensure_index_exists_default_path_returned(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_ensure_index_exists_explicit_override(tmp_path: Path) -> None:
+async def test_ensure_index_exists_uses_index_dir(tmp_path: Path) -> None:
     trace_path = tmp_path / "t.jsonl"
     trace_path.write_text("")
-    custom_index = tmp_path / "custom.idx.jsonl"
-    custom_meta = Path(str(custom_index) + ".meta.json")
-    custom_index.write_text("")
-    _write_meta(custom_meta, trace_path=trace_path)
+    index_dir = tmp_path / "indexes"
+    index_dir.mkdir()
+    expected_index = index_dir / "t.jsonl.engine-index.jsonl"
+    expected_meta = TraceIndexBuilder._meta_path_for(expected_index)
+    expected_index.write_text("")
+    _write_meta(expected_meta, trace_path=trace_path)
 
     result_path = await TraceIndexBuilder.ensure_index_exists(
         trace_path=trace_path,
-        config=TraceIndexConfig(),
-        index_path=custom_index,
+        config=TraceIndexConfig(index_dir=index_dir),
     )
-    assert result_path == custom_index
+    assert result_path == expected_index
 
 
 @pytest.mark.asyncio
