@@ -99,7 +99,7 @@ async def test_client_closed_on_normal_exit(
     await engine_main.run_engine_async(
         [AgentMessage(role="user", content="Summarize the dataset.")],
         _config(),
-        trace_path,
+        [trace_path],
     )
 
     stub_client.close.assert_awaited_once()
@@ -123,7 +123,7 @@ async def test_client_closed_on_early_consumer_break(
     agen = engine_main.stream_engine_async(
         [AgentMessage(role="user", content="Summarize the dataset.")],
         _config(),
-        trace_path,
+        [trace_path],
     )
 
     # Consume one event, then close — exercises the GeneratorExit teardown path.

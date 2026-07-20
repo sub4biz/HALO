@@ -50,7 +50,7 @@ async def test_local_telemetry_backend_writes_jsonl(
     # don't pollute tests/fixtures/. Same convention as every other test.
     trace_path = isolated_trace_copy()
 
-    await run_engine_async(messages, cfg, trace_path, telemetry=True)
+    await run_engine_async(messages, cfg, [trace_path], telemetry=True)
 
     assert out_path.exists(), "local telemetry file was not written"
     lines = out_path.read_text().splitlines()

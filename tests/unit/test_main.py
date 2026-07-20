@@ -40,7 +40,7 @@ def test_public_entrypoints_exist_and_are_async() -> None:
 def test_async_signatures_match() -> None:
     for fn in (engine_main.stream_engine_async, engine_main.run_engine_async):
         params = list(inspect.signature(fn).parameters)
-        assert params[:3] == ["messages", "engine_config", "trace_path"]
+        assert params[:3] == ["messages", "engine_config", "trace_paths"]
 
 
 def test_drive_sync_runs_finally_on_early_break() -> None:
@@ -178,7 +178,7 @@ async def test_engine_wires_configured_client_via_run_config(
     monkeypatch.setattr("agents.Runner.run_streamed", runner.run_streamed)
 
     await engine_main.run_engine_async(
-        [AgentMessage(role="user", content="hi")], _config(), trace_path
+        [AgentMessage(role="user", content="hi")], _config(), [trace_path]
     )
 
     assert stub_client_instance is not None
@@ -204,7 +204,7 @@ async def test_resolve_trace_sources_single_file_honors_explicit_index(
     trace.write_bytes((fixtures_dir / "tiny_traces.jsonl").read_bytes())
     index = tmp_path / "pinned-index.jsonl"
 
-    sources = await _resolve_trace_sources(trace, config=TraceIndexConfig(index_path=index))
+    sources = await _resolve_trace_sources([trace], config=TraceIndexConfig(index_path=index))
 
     assert sources == [TraceDatasetSource(trace_path=trace, index_path=index)]
 
@@ -248,3 +248,13 @@ async def test_resolve_trace_sources_rejects_explicit_index_for_multi_file(
             [first, second],
             config=TraceIndexConfig(index_path=tmp_path / "shared-index.jsonl"),
         )
+
+
+@pytest.mark.asyncio
+async def test_resolve_trace_sources_requires_at_least_one_path() -> None:
+    """An empty dataset is a caller bug — fail fast rather than load nothing."""
+    from engine.main import _resolve_trace_sources
+    from engine.traces.models.trace_index_config import TraceIndexConfig
+
+    with pytest.raises(ValueError, match="at least one trace path"):
+        await _resolve_trace_sources([], config=TraceIndexConfig())
