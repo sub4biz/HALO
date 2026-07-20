@@ -102,7 +102,7 @@ async def probe_run_engine_async_filters_deltas() -> None:
     tp = isolated_trace_copy()
 
     with install_fake_runner(runner):
-        items = await run_engine_async(msgs, cfg, [tp])
+        items = await run_engine_async(msgs, cfg, tp)
     _check(
         all(isinstance(it, AgentOutputItem) for it in items),
         "filter: only AgentOutputItem returned by run_engine_async",

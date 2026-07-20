@@ -178,7 +178,7 @@ async def test_engine_wires_configured_client_via_run_config(
     monkeypatch.setattr("agents.Runner.run_streamed", runner.run_streamed)
 
     await engine_main.run_engine_async(
-        [AgentMessage(role="user", content="hi")], _config(), [trace_path]
+        [AgentMessage(role="user", content="hi")], _config(), trace_path
     )
 
     assert stub_client_instance is not None
@@ -258,3 +258,20 @@ async def test_resolve_trace_sources_requires_at_least_one_path() -> None:
 
     with pytest.raises(ValueError, match="at least one trace path"):
         await _resolve_trace_sources([], config=TraceIndexConfig())
+
+
+def test_as_trace_path_list_wraps_a_bare_path() -> None:
+    """The public-edge single-path convenience normalizes to a one-item list."""
+    from engine.main import _as_trace_path_list
+
+    one = Path("/data/traces.jsonl")
+    assert _as_trace_path_list(one) == [one]
+
+
+def test_as_trace_path_list_passes_a_sequence_through() -> None:
+    """A list (or tuple) of paths comes back as a list unchanged."""
+    from engine.main import _as_trace_path_list
+
+    paths = [Path("/data/a.jsonl"), Path("/data/b.jsonl")]
+    assert _as_trace_path_list(paths) == paths
+    assert _as_trace_path_list(tuple(paths)) == paths

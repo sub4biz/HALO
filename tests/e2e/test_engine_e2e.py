@@ -88,7 +88,7 @@ async def test_engine_runs_on_tiny_fixture(tmp_path: Path, fixtures_dir: Path) -
     ]
 
     results = await asyncio.wait_for(
-        run_engine_async(messages, cfg, [trace_path]),
+        run_engine_async(messages, cfg, trace_path),
         E2E_TIMEOUT_SECONDS,
     )
 
@@ -142,7 +142,7 @@ async def test_engine_streams_subagent_chain(tmp_path: Path, fixtures_dir: Path)
     deltas: list[AgentTextDelta] = []
 
     async def _drain() -> None:
-        async for event in stream_engine_async(messages, cfg, [trace_path]):
+        async for event in stream_engine_async(messages, cfg, trace_path):
             if isinstance(event, AgentOutputItem):
                 items.append(event)
             elif isinstance(event, AgentTextDelta):
@@ -203,7 +203,7 @@ async def test_engine_run_code_executes_in_sandbox(tmp_path: Path, fixtures_dir:
     ]
 
     results = await asyncio.wait_for(
-        run_engine_async(messages, cfg, [trace_path]),
+        run_engine_async(messages, cfg, trace_path),
         E2E_TIMEOUT_SECONDS * 2,
     )
 
@@ -275,7 +275,7 @@ async def test_engine_uses_code_tools(tmp_path: Path, fixtures_dir: Path) -> Non
     ]
 
     results = await asyncio.wait_for(
-        run_engine_async(messages, cfg, [trace_path]),
+        run_engine_async(messages, cfg, trace_path),
         E2E_TIMEOUT_SECONDS * 2,
     )
 
@@ -318,7 +318,7 @@ async def test_engine_uses_git_tools(tmp_path: Path, fixtures_dir: Path) -> None
     ]
 
     results = await asyncio.wait_for(
-        run_engine_async(messages, cfg, [trace_path]),
+        run_engine_async(messages, cfg, trace_path),
         E2E_TIMEOUT_SECONDS * 2,
     )
 

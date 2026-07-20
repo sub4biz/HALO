@@ -539,7 +539,7 @@ async def run_with_fake(
     result = RunResult()
 
     async def _consume() -> None:
-        async for event in stream_engine_async(msgs, cfg, [tp]):
+        async for event in stream_engine_async(msgs, cfg, tp):
             result.all_events.append(event)
             if isinstance(event, AgentOutputItem):
                 result.output_items.append(event)

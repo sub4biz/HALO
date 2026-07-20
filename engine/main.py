@@ -35,6 +35,17 @@ _T = TypeVar("_T")
 logger = logging.getLogger(__name__)
 
 
+def _as_trace_path_list(trace_paths: Path | Sequence[Path]) -> list[Path]:
+    """Normalize the public API's single-path convenience into a list.
+
+    The edge entrypoints accept a lone ``Path`` for the common single-file
+    dataset; every internal function works with a list. This is the one
+    place that bridges the two, so ``_resolve_trace_sources`` and below
+    never have to special-case a bare ``Path``.
+    """
+    return [trace_paths] if isinstance(trace_paths, Path) else list(trace_paths)
+
+
 async def _resolve_trace_sources(
     trace_paths: Sequence[Path], *, config: TraceIndexConfig
 ) -> list[TraceDatasetSource]:
@@ -69,18 +80,20 @@ async def _resolve_trace_sources(
 async def stream_engine_async(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_paths: Sequence[Path],
+    trace_paths: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> AsyncGenerator[EngineStreamEvent, None]:
     """Run the HALO engine and stream events as they happen.
 
-    ``trace_paths`` is the dataset's JSONL files — a list of one for the
-    common case, several when the dataset spans multiple files. Each is
-    indexed independently and queried as one dataset; trace ids must be
-    unique across files. Callers describe what each file encodes through
-    ``EngineConfig.dataset_context`` (or their own prompt); the engine
-    stays agnostic.
+    ``trace_paths`` is the dataset's JSONL file(s): a lone ``Path`` for the
+    common single-file case, or a sequence when the dataset spans multiple
+    files. Each is indexed independently and queried as one dataset; trace
+    ids must be unique across files. Callers describe what each file
+    encodes through ``EngineConfig.dataset_context`` (or their own prompt);
+    the engine stays agnostic. The single-``Path`` convenience is a
+    public-edge affordance only — internally the engine always works with
+    a list.
 
     Yields ``AgentOutputItem`` (assistant messages, tool calls, tool results)
     interleaved with ``AgentTextDelta`` (incremental token deltas). Items from
@@ -109,7 +122,7 @@ async def stream_engine_async(
                 sandbox = Sandbox.get()
 
                 sources = await _resolve_trace_sources(
-                    trace_paths, config=engine_config.trace_index
+                    _as_trace_path_list(trace_paths), config=engine_config.trace_index
                 )
                 trace_store = TraceStore.load_many(sources)
 
@@ -247,7 +260,7 @@ async def stream_engine_async(
 async def stream_engine_output_async(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_paths: Sequence[Path],
+    trace_paths: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> AsyncGenerator[AgentOutputItem, None]:
@@ -293,7 +306,7 @@ def _drive_sync(agen: AsyncGenerator[_T, None]) -> Iterator[_T]:
 def stream_engine_output(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_paths: Sequence[Path],
+    trace_paths: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> Iterator[AgentOutputItem]:
@@ -313,7 +326,7 @@ def stream_engine_output(
 async def run_engine_async(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_paths: Sequence[Path],
+    trace_paths: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> list[AgentOutputItem]:
@@ -334,7 +347,7 @@ async def run_engine_async(
 def stream_engine(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_paths: Sequence[Path],
+    trace_paths: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> Iterator[EngineStreamEvent]:
@@ -353,7 +366,7 @@ def stream_engine(
 def run_engine(
     messages: list[AgentMessage],
     engine_config: EngineConfig,
-    trace_paths: Sequence[Path],
+    trace_paths: Path | Sequence[Path],
     *,
     telemetry: bool = False,
 ) -> list[AgentOutputItem]:

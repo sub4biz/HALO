@@ -60,7 +60,7 @@ async def test_engine_compaction_uses_configured_compactor(
     results = await engine_main.run_engine_async(
         [AgentMessage(role="user", content="Summarize the dataset.")],
         _config(),
-        [trace_path],
+        trace_path,
     )
 
     assert any(item.final for item in results)

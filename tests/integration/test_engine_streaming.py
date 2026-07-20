@@ -72,7 +72,7 @@ async def test_run_engine_async_filters_text_deltas() -> None:
         items = await run_engine_async(
             make_default_messages(),
             make_default_config(),
-            [isolated_trace_copy()],
+            isolated_trace_copy(),
         )
 
     assert len(items) == 1
